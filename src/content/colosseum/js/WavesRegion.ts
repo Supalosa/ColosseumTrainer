@@ -20,6 +20,7 @@ import {
   ShockwaveColossus,
 } from "./mobs";
 import { withWaveSpawnPathing } from "./mobs/WaveSpawnPathing";
+import { decodeLosWaveUrl, translateLosCoordinate, type LosMobSpec, type LosWaveImport } from "./LosWaveUrl";
 
 const WaveSerpentShaman = withWaveSpawnPathing(SerpentShaman);
 const WaveJavelinColossus = withWaveSpawnPathing(JavelinColossus);
@@ -45,6 +46,12 @@ export const WAVE_COMPOSITIONS = {
 } as const;
 
 export type WaveNumber = keyof typeof WAVE_COMPOSITIONS;
+export type ImportedReinforcements =
+  | "none"
+  | "jaguar"
+  | "shaman-jaguar"
+  | "minotaur"
+  | "minotaur-shaman";
 
 // Perimeter tiles derived from osrs-colosseum's blockedTileRanges. Only the
 // inaccessible tiles bordering an accessible tile are retained. Coordinates
@@ -171,10 +178,14 @@ export class WavesRegion extends ColosseumRegion {
   private waveSpawnTicks = 0;
   private spawnEligibilityPlayerLocation: { x: number; y: number } | null = null;
   private waveStateListeners = new Set<() => void>();
+  private waveTick = 0;
+  private readonly losWaveImport: LosWaveImport | null;
+  private importedReinforcements: ImportedReinforcements = "none";
 
   constructor(loadouts: Loadout[] = [colosseumLoadout]) {
     super(loadouts);
     this.selectedWave = colosseumSettings.getSnapshot().waveNumber as WaveNumber;
+    this.losWaveImport = decodeLosWaveUrl(new URL(window.location.href));
   }
 
   override getName() {
@@ -182,7 +193,9 @@ export class WavesRegion extends ColosseumRegion {
   }
 
   override initialiseRegion() {
-    const player = new Player(this, { x: 17, y: 24 });
+    const player = new Player(this, this.losWaveImport?.player
+      ? translateLosCoordinate(this.losWaveImport.player)
+      : { x: 17, y: 24 });
     this.addPlayer(player);
 
     const mobOptions = {
@@ -262,6 +275,10 @@ export class WavesRegion extends ColosseumRegion {
     if (this.wavePhase === "waiting") this.waveStartRequested = true;
   }
 
+  readonly isLosWaveImport = () => this.losWaveImport !== null;
+
+  readonly isLosWaveStartImport = () => this.losWaveImport?.fromWaveStart === true;
+
   readonly subscribeWaveState = (listener: () => void) => {
     this.waveStateListeners.add(listener);
     return () => this.waveStateListeners.delete(listener);
@@ -270,6 +287,16 @@ export class WavesRegion extends ColosseumRegion {
   readonly isWaveStartModalOpen = () => this.wavePhase === "waiting";
 
   readonly getSelectedWave = () => this.selectedWave;
+
+  readonly getWaveTick = () => this.waveTick;
+
+  readonly getImportedReinforcements = () => this.importedReinforcements;
+
+  setImportedReinforcements(reinforcements: ImportedReinforcements) {
+    if (this.wavePhase !== "waiting" || !this.losWaveImport?.fromWaveStart) return;
+    this.importedReinforcements = reinforcements;
+    this.notifyWaveStateChanged();
+  }
 
   setSelectedWave(wave: WaveNumber) {
     if (this.wavePhase !== "waiting" || wave === this.selectedWave) return;
@@ -280,13 +307,29 @@ export class WavesRegion extends ColosseumRegion {
 
   override postTick() {
     if (this.wavePhase === "waiting" && this.waveStartRequested) {
-      // postTick is a server-tick boundary: close the modal here, then count
-      // five complete ticks before placing the NPCs into the Region.
-      this.wavePhase = "countdown";
-      this.waveStartRequested = false;
-      this.waveSpawnTicks = 5;
-      SoundCache.play(new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.waveStartAcknowledged.id), 0.1));
-      this.notifyWaveStateChanged();
+      const countdown = () => {
+        // postTick is a server-tick boundary: close the modal here, then count
+        // five complete ticks before placing the NPCs into the Region.
+        this.wavePhase = "countdown";
+        this.waveStartRequested = false;
+        this.waveSpawnTicks = 5;
+        SoundCache.play(new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.waveStartAcknowledged.id), 0.1));
+        this.notifyWaveStateChanged();
+      };
+      if (this.losWaveImport) {
+        this.waveStartRequested = false;
+        if (this.losWaveImport.fromWaveStart) {
+          // delayed start
+          countdown();
+          return;
+        }
+        // instant start
+        this.waveSpawnTicks = 0;
+        this.wavePhase = "countdown";
+        this.notifyWaveStateChanged();
+        return;
+      }
+      countdown();
       return;
     }
 
@@ -302,6 +345,7 @@ export class WavesRegion extends ColosseumRegion {
       if (!this.reinforcementsSpawned && --this.reinforcementTicks <= 0) {
         this.spawnReinforcements();
       }
+      this.waveTick++;
       return;
     }
 
@@ -314,6 +358,13 @@ export class WavesRegion extends ColosseumRegion {
 
     const player = this.players[0];
     const aggressive = colosseumSettings.getSnapshot().npcsAggressive;
+
+    if (this.losWaveImport) {
+      // short circuit for LOS import
+      this.spawnLosWave(this.players[0], this.losWaveImport);
+      return;
+    }
+
     const composition = WAVE_COMPOSITIONS[this.selectedWave];
     const waveMobs = [
       ...this.waveMobPool.shaman.slice(0, composition.shaman),
@@ -376,7 +427,17 @@ export class WavesRegion extends ColosseumRegion {
     if (!pool) return;
 
     let reinforcements: Mob[];
-    if (this.selectedWave <= 3) reinforcements = [pool.jaguar];
+    if (this.losWaveImport) {
+      switch (this.importedReinforcements) {
+        case "jaguar": reinforcements = [pool.jaguar]; break;
+        case "shaman-jaguar": reinforcements = [pool.shaman, pool.jaguar]; break;
+        case "minotaur": reinforcements = [pool.minotaur]; break;
+        case "minotaur-shaman": reinforcements = [pool.minotaur, pool.shaman]; break;
+        default:
+          this.reinforcementsSpawned = true;
+          return;
+      }
+    } else if (this.selectedWave <= 3) reinforcements = [pool.jaguar];
     else if (this.selectedWave <= 6) reinforcements = [pool.shaman, pool.jaguar];
     else if (this.selectedWave <= 9) reinforcements = [pool.minotaur];
     else reinforcements = [pool.minotaur, pool.shaman];
@@ -420,6 +481,42 @@ export class WavesRegion extends ColosseumRegion {
       if (aggressive) mob.setAggro(player);
       this.addMob(mob);
     });
+  }
+
+  private spawnLosWave(player: Player, imported: LosWaveImport) {
+    const waveMobs = imported.mobs.map((spec) => this.createLosMob(spec, imported.fromWaveStart));
+    waveMobs.forEach((mob) => {
+      mob.setLocation(translateLosCoordinate({ x: mob.location.x, y: mob.location.y }));
+      mob.setAggro(player);
+      if (imported.fromWaveStart) this.addMob(mob);
+      else {
+        this.mobs.push(mob);
+        mob.addedToWorld();
+      }
+    });
+    this.wavePhase = "active";
+    const spawnImportedReinforcements = imported.fromWaveStart && this.importedReinforcements !== "none";
+    this.reinforcementsSpawned = !spawnImportedReinforcements;
+    this.reinforcementTicks = spawnImportedReinforcements ? REINFORCEMENT_DELAY_TICKS : 0;
+    if (imported.fromWaveStart) this.spawnFremennikWarband(player, true);
+  }
+
+  private createLosMob(spec: LosMobSpec, fromWaveStart: boolean): Mob {
+    const location = { x: spec.x, y: spec.y };
+    const options = { cooldown: fromWaveStart ? 3 : 0 };
+    let mob: Mob;
+    switch (spec.type) {
+      case 1: mob = fromWaveStart ? new WaveSerpentShaman(this, location, options) : new SerpentShaman(this, location, options); break;
+      case 2: mob = fromWaveStart ? new WaveJavelinColossus(this, location, options) : new JavelinColossus(this, location, options); break;
+      case 3: mob = fromWaveStart ? new WaveJaguarWarrior(this, location, options) : new JaguarWarrior(this, location, options); break;
+      case 4: mob = fromWaveStart ? new WaveManticore(this, location, options) : new Manticore(this, location, options); break;
+      case 5: mob = fromWaveStart ? new WaveMinotaur(this, location, options) : new Minotaur(this, location, options); break;
+      case 6: mob = fromWaveStart ? new WaveShockwaveColossus(this, location, options) : new ShockwaveColossus(this, location, options); break;
+      case 7: mob = fromWaveStart ? new WaveSerpentShaman(this, location, options) : new SerpentShaman(this, location, options); break;
+      default: throw new Error(`Unknown LOS NPC type: ${spec.type}`);
+    }
+    if (mob instanceof Manticore && spec.extra) mob.setAttackPattern(spec.extra);
+    return mob;
   }
 
   private allocateJokeWaveSpawns(mobs: Mob[], playerLocation: { x: number; y: number }) {

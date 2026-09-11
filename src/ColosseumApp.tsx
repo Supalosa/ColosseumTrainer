@@ -13,7 +13,7 @@ import {
 } from "osrs-sdk";
 import { DefaultSidebar, GameOverlay, LoadoutManager, Modal, RuneScapeButton, RuneScapePanel, TrainerApp, TrainerLoadingSplash, useSettingsStore } from "osrs-sdk-react";
 import { ColosseumRegion } from "./content/colosseum/js/ColosseumRegion";
-import { WAVE_COMPOSITIONS, WaveNumber, WavesRegion } from "./content/colosseum/js/WavesRegion";
+import { ImportedReinforcements, WAVE_COMPOSITIONS, WaveNumber, WavesRegion } from "./content/colosseum/js/WavesRegion";
 import { COLOSSEUM_ASSETS } from "./assets";
 import { colosseumLoadout } from "./content/colosseum/js/ColosseumLoadout";
 import {
@@ -164,19 +164,25 @@ function WaveStartModal({ region }: { region: WavesRegion }) {
     region.getSelectedWave,
     region.getSelectedWave,
   );
+  const importedReinforcements = useSyncExternalStore(
+    region.subscribeWaveState,
+    region.getImportedReinforcements,
+    region.getImportedReinforcements,
+  );
+  const imported = region.isLosWaveImport();
 
   const waveLabels: Record<WaveNumber, string> = {
-    1: "Warband, Shaman",
-    2: "Warband, Shaman, Javelin",
-    3: "Warband, Shaman, 2x Javelin",
-    4: "Warband, Shaman, Manticore",
-    5: "Warband, Shaman, Javelin, Manticore",
-    6: "Warband, Shaman, 2x Javelin, Manticore",
-    7: "Warband, Javelin, Manticore, Shockwave",
-    8: "Warband, 2x Javelin, Manticore, Shockwave",
-    9: "Warband, Javelin, 2x Manticore",
-    10: "Warband, 2x Javelin, 2x Manticore",
-    11: "Warband, Javelin, 2x Manticore, Shockwave",
+    1: "Shaman",
+    2: "Shaman, Javelin",
+    3: "Shaman, 2x Javelin",
+    4: "Shaman, Manticore",
+    5: "Shaman, Javelin, Manticore",
+    6: "Shaman, 2x Javelin, Manticore",
+    7: "Javelin, Manticore, Shockwave",
+    8: "2x Javelin, Manticore, Shockwave",
+    9: "Javelin, 2x Manticore",
+    10: "2x Javelin, 2x Manticore",
+    11: "Javelin, 2x Manticore, Shockwave",
     12: "performance test / good luck",
   };
 
@@ -185,26 +191,48 @@ function WaveStartModal({ region }: { region: WavesRegion }) {
       <RuneScapePanel style={{ width: 280 }}>
         <h2 style={{ marginTop: 0, textAlign: "center" }}>Secret double south trainer</h2>
         <p style={{ marginTop: 0, textAlign: "center" }}>
-          Wave starts include the Fremennik warband and timed reinforcements.
-          Javelin toss is not implemented yet.
+          Javelin toss and minotaur heal is not implemented yet.
         </p>
-        <select
-          aria-label="Wave"
-          value={selectedWave}
-          onChange={(event) => region.setSelectedWave(Number(event.currentTarget.value) as WaveNumber)}
-        >
-          {(Object.keys(WAVE_COMPOSITIONS) as unknown as WaveNumber[]).map((wave) => (
-            <option key={wave} value={wave}>Wave {wave} — {waveLabels[wave]}</option>
-          ))}
-        </select>
-        <label>
-          <input
-            type="checkbox"
-            checked={settings.forceDoubleSouth}
-            onChange={(event) => colosseumSettings.set({ forceDoubleSouth: event.currentTarget.checked })}
-          />
-          Force double south
-        </label>
+        {imported ?
+          <>
+            <p style={{ marginTop: 0, textAlign: "center", color: 'white' }}>Custom wave imported.</p>
+            {region.isLosWaveStartImport() && (
+              <label>
+                Reinforcements
+                <select
+                  aria-label="Reinforcements"
+                  value={importedReinforcements}
+                  onChange={(event) => region.setImportedReinforcements(event.currentTarget.value as ImportedReinforcements)}
+                >
+                  <option value="none">None</option>
+                  <option value="jaguar">Jaguar Warrior</option>
+                  <option value="shaman-jaguar">Serpent Shaman + Jaguar Warrior</option>
+                  <option value="minotaur">Minotaur</option>
+                  <option value="minotaur-shaman">Minotaur + Serpent Shaman</option>
+                </select>
+              </label>
+            )}
+          </> :
+          <>
+            <select
+              aria-label="Wave"
+              value={selectedWave}
+              onChange={(event) => region.setSelectedWave(Number(event.currentTarget.value) as WaveNumber)}
+            >
+              {(Object.keys(WAVE_COMPOSITIONS) as unknown as WaveNumber[]).map((wave) => (
+                <option key={wave} value={wave}>Wave {wave} — {waveLabels[wave]}</option>
+              ))}
+            </select>
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.forceDoubleSouth}
+                onChange={(event) => colosseumSettings.set({ forceDoubleSouth: event.currentTarget.checked })}
+              />
+              Force double south
+            </label>
+          </>
+        }
         <RuneScapeButton
           type="button"
           onClick={() => region.requestWaveStart()}

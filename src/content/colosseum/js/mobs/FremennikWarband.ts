@@ -14,6 +14,7 @@ import {
 } from "osrs-sdk";
 
 import { COLOSSEUM_ASSETS } from "../../../../assets";
+import { WavesRegion } from "../WavesRegion";
 
 export enum FremennikWarbandAnimations {
   Idle = 0,
@@ -22,6 +23,8 @@ export enum FremennikWarbandAnimations {
   Defend = 3,
   Death = 4,
 }
+
+const FREM_ATTACK_SPEED = 6; // what to modulo global tick by
 
 class FixedMaxMeleeWeapon extends MeleeWeapon {
   constructor(private readonly fixedMaxHit: number) {
@@ -83,7 +86,8 @@ abstract class FremennikWarbander extends Mob {
   }
 
   override canAttack() {
-    return !this.movedThisTick && super.canAttack();
+    const coloRegion = this.region as WavesRegion;
+    return !this.movedThisTick && super.canAttack() && (coloRegion.getWaveTick() % FREM_ATTACK_SPEED === this.fremAttackTickOffset);
   }
 
   override canMove() {
@@ -93,14 +97,6 @@ abstract class FremennikWarbander extends Mob {
       y: this.aggro.location.y + this.preferredTargetOffset.y,
     };
     return this.location.x !== preferred.x || this.location.y !== preferred.y;
-  }
-
-  override attackStep() {
-    const attackWasDue = this.attackDelay <= 1;
-    super.attackStep();
-    // Warbanders keep their six-tick phase even when movement, range, a
-    // freeze, or a stun prevents an attack on the scheduled tick.
-    if (attackWasDue && this.attackDelay <= 0) this.attackDelay = this.attackSpeed;
   }
 
   override getNextMovementStep() {
@@ -151,6 +147,10 @@ abstract class FremennikWarbander extends Mob {
   override get deathAnimationId() {
     return FremennikWarbandAnimations.Death;
   }
+
+  get fremAttackTickOffset(): number {
+    return 0;
+  }
 }
 
 export class FremennikWarbandArcher extends FremennikWarbander {
@@ -199,6 +199,10 @@ export class FremennikWarbandArcher extends FremennikWarbander {
 
   override create3dModel() {
     return CacheRenderModel.forRenderable(this, CacheRenderReferences.npc(FremennikWarbandArcher.NPC_ID));
+  }
+
+  override get fremAttackTickOffset(): number {
+    return 5;
   }
 }
 
@@ -249,6 +253,10 @@ export class FremennikWarbandSeer extends FremennikWarbander {
   override create3dModel() {
     return CacheRenderModel.forRenderable(this, CacheRenderReferences.npc(FremennikWarbandSeer.NPC_ID));
   }
+
+  override get fremAttackTickOffset(): number {
+    return 4;
+  }
 }
 
 export class FremennikWarbandBerserker extends FremennikWarbander {
@@ -297,5 +305,9 @@ export class FremennikWarbandBerserker extends FremennikWarbander {
 
   override create3dModel() {
     return CacheRenderModel.forRenderable(this, CacheRenderReferences.npc(FremennikWarbandBerserker.NPC_ID));
+  }
+
+  override get fremAttackTickOffset(): number {
+    return 3;
   }
 }

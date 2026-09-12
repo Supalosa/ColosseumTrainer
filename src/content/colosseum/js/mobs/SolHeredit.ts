@@ -1003,6 +1003,10 @@ export class SolHeredit extends Mob {
     return true;
   }
 
+  override get healthBarWidth() {
+    return 96;
+  }
+
   override movementStep() {
     super.movementStep();
     if (this.lastLocation.x === this.location.x && this.lastLocation.y === this.location.y) {

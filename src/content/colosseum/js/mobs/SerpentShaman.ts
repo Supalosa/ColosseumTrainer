@@ -30,7 +30,12 @@ export class SerpentShaman extends Mob {
   override setStats() {
     this.weapons = {
       magic: new MagicWeapon({
-        visuals: { spotAnim: { id: COLOSSEUM_ASSETS.spotAnims.serpentShamanProjectile.id } },
+        visuals: {
+          spotAnim: {
+            id: COLOSSEUM_ASSETS.spotAnims.serpentShamanProjectile.id
+          },
+          startCycleOffset: 20,
+        },
       }),
     };
     this.stats = {
@@ -87,5 +92,9 @@ export class SerpentShaman extends Mob {
 
   override create3dModel() {
     return CacheRenderModel.forRenderable(this, CacheRenderReferences.npc(SerpentShaman.NPC_ID));
+  }
+
+  override get deathAnimationLength() {
+    return 3;
   }
 }

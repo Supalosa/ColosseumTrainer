@@ -109,4 +109,8 @@ export class JavelinColossus extends Mob {
   override create3dModel(): Model {
     return CacheRenderModel.forRenderable(this, CacheRenderReferences.npc(JavelinColossus.NPC_ID));
   }
+
+  override get deathAnimationLength() {
+    return 3;
+  }
 }

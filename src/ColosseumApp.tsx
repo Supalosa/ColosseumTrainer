@@ -15,7 +15,7 @@ import { DefaultSidebar, GameOverlay, LoadoutManager, Modal, RuneScapeButton, Ru
 import { ColosseumRegion } from "./content/colosseum/js/ColosseumRegion";
 import { ImportedReinforcements, WAVE_COMPOSITIONS, WaveNumber, WavesRegion } from "./content/colosseum/js/WavesRegion";
 import { COLOSSEUM_ASSETS } from "./assets";
-import { colosseumLoadout } from "./content/colosseum/js/ColosseumLoadout";
+import { colosseumLoadout, wavesLoadout } from "./content/colosseum/js/ColosseumLoadout";
 import {
   colosseumSettings,
   ColosseumSettingsState,
@@ -29,7 +29,7 @@ declare global {
   }
 }
 
-const loadoutTemplates = [colosseumLoadout];
+const loadoutTemplates = [colosseumLoadout, wavesLoadout];
 
 type TransferredSettings = {
   version: 1;

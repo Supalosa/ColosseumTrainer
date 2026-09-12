@@ -105,4 +105,8 @@ export class ShockwaveColossus extends Mob {
   override create3dModel() {
     return CacheRenderModel.forRenderable(this, CacheRenderReferences.npc(ShockwaveColossus.NPC_ID));
   }
+
+  override get deathAnimationLength() {
+    return 3;
+  }
 }

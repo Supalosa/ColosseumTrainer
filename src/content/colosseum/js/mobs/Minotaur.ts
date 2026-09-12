@@ -88,4 +88,8 @@ export class Minotaur extends Mob {
   override create3dModel() {
     return CacheRenderModel.forRenderable(this, CacheRenderReferences.npc(Minotaur.NPC_ID));
   }
+
+  override get deathAnimationLength() {
+    return 4;
+  }
 }

@@ -1,4 +1,4 @@
-import { cacheSound, Collision, Manticore, Pathing, Player, Random, Settings, Sound, SoundCache, TileMarker, Viewport } from "osrs-sdk";
+import { cacheSound, Manticore, Player, Random, Settings, Sound, SoundCache, TileMarker, Viewport } from "osrs-sdk";
 import type { Loadout, Mob } from "osrs-sdk";
 
 import { colosseumLoadout } from "./ColosseumLoadout";
@@ -41,8 +41,6 @@ export const WAVE_COMPOSITIONS = {
   9: { shaman: 0, javelin: 1, manticore: 2, shockwave: 0 },
   10: { shaman: 0, javelin: 2, manticore: 2, shockwave: 0 },
   11: { shaman: 0, javelin: 1, manticore: 2, shockwave: 1 },
-  // Temporary joke wave: thirty NPCs scattered throughout the arena.
-  12: { shaman: 8, javelin: 8, manticore: 7, shockwave: 7 },
 } as const;
 
 export type WaveNumber = keyof typeof WAVE_COMPOSITIONS;
@@ -378,19 +376,14 @@ export class WavesRegion extends ColosseumRegion {
     const eligibleSpawns = COLOSSEUM_SPAWN_POINTS.filter(
       (spawn) => !isWithinTiles(spawn, eligibilityPlayerLocation, 4),
     );
-    let allocatedSpawns: Array<{ x: number; y: number }>;
-    if (this.selectedWave === 12) {
-      allocatedSpawns = this.allocateJokeWaveSpawns(randomizedMobs, eligibilityPlayerLocation);
-    } else {
-      const forceDoubleSouth = colosseumSettings.getSnapshot().forceDoubleSouth;
-      const forcedSpawns = forceDoubleSouth
-        ? [SOUTH_SPAWN_1, SOUTH_SPAWN_2].slice(0, randomizedMobs.length)
-        : [];
-      const remainingSpawns = shuffle(eligibleSpawns.filter(
-        (spawn) => !forcedSpawns.some((forced) => sameLocation(spawn, forced)),
-      ));
-      allocatedSpawns = [...forcedSpawns, ...remainingSpawns];
-    }
+    const forceDoubleSouth = colosseumSettings.getSnapshot().forceDoubleSouth;
+    const forcedSpawns = forceDoubleSouth
+      ? [SOUTH_SPAWN_1, SOUTH_SPAWN_2].slice(0, randomizedMobs.length)
+      : [];
+    const remainingSpawns = shuffle(eligibleSpawns.filter(
+      (spawn) => !forcedSpawns.some((forced) => sameLocation(spawn, forced)),
+    ));
+    const allocatedSpawns = [...forcedSpawns, ...remainingSpawns];
     if (allocatedSpawns.length < randomizedMobs.length) {
       throw new Error("Not enough eligible Colosseum spawn points for this wave");
     }
@@ -400,7 +393,7 @@ export class WavesRegion extends ColosseumRegion {
     // NPC_INFO.id in osrs-colosseum defines server processing order. Location
     // allocation is random, but insertion into the Region must retain it.
     randomizedMobs.sort((first, second) => npcOrder(first) - npcOrder(second));
-    if (this.selectedWave !== 12) this.spawnFremennikWarband(player, aggressive);
+    this.spawnFremennikWarband(player, aggressive);
     randomizedMobs.forEach((mob) => {
       if (aggressive) mob.setAggro(player);
       this.addMob(mob);
@@ -517,27 +510,5 @@ export class WavesRegion extends ColosseumRegion {
     }
     if (mob instanceof Manticore && spec.extra) mob.setAttackPattern(spec.extra);
     return mob;
-  }
-
-  private allocateJokeWaveSpawns(mobs: Mob[], playerLocation: { x: number; y: number }) {
-    const allocated: Array<{ x: number; y: number; size: number }> = [];
-    return mobs.map((mob) => {
-      const candidates: Array<{ x: number; y: number }> = [];
-      for (let x = 11; x <= 40 - mob.size; x++) {
-        for (let y = 11 + mob.size; y <= 41; y++) {
-          if (!isWithinTiles({ x, y }, playerLocation, 4)
-            && Pathing.canTileBePathedTo(this, x, y, mob.size)
-            && !allocated.some((other) => Collision.collisionMath(
-              x, y, mob.size, other.x, other.y, other.size,
-            ))) {
-            candidates.push({ x, y });
-          }
-        }
-      }
-      if (candidates.length === 0) throw new Error("Ran out of room for joke-wave NPCs");
-      const location = candidates[Math.floor(Random.get() * candidates.length)];
-      allocated.push({ ...location, size: mob.size });
-      return location;
-    });
   }
 }

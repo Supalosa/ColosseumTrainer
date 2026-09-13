@@ -72,7 +72,7 @@ abstract class FremennikWarbander extends Mob {
 
   /** Warbanders may stack with and move through other NPCs. */
   override get consumesSpace() {
-    return null;
+    return false;
   }
 
   override get attackSpeed() {

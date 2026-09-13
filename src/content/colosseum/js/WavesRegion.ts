@@ -526,7 +526,7 @@ export class WavesRegion extends ColosseumRegion {
       for (let x = 11; x <= 40 - mob.size; x++) {
         for (let y = 11 + mob.size; y <= 41; y++) {
           if (!isWithinTiles({ x, y }, playerLocation, 4)
-            && Pathing.canTileBePathedTo(this, x, y, mob.size, mob)
+            && Pathing.canTileBePathedTo(this, x, y, mob.size)
             && !allocated.some((other) => Collision.collisionMath(
               x, y, mob.size, other.x, other.y, other.size,
             ))) {

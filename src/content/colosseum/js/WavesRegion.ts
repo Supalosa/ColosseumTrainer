@@ -257,6 +257,7 @@ export class WavesRegion extends ColosseumRegion {
     this.fremennikWarbandPool = null;
     this.reinforcementTicks = 0;
     this.reinforcementsSpawned = false;
+    this.waveTick = 0;
     this.pendingMobs = [];
     const reset = super.reset(false);
     // The modal owns the wave-start gate. Keep the world live so the player
@@ -348,6 +349,7 @@ export class WavesRegion extends ColosseumRegion {
         this.spawnReinforcements();
       }
       this.waveTick++;
+      this.notifyWaveStateChanged();
       return;
     }
 

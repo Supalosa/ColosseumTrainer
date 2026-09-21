@@ -40,6 +40,6 @@ describe("WavesRegion LOS imports", () => {
 
     for (let tick = 0; tick < 67; tick++) region.postTick();
     expect(region.mobs).toHaveLength(2);
-    expect(region.getWaveTimerTicks()).toBe(67);
+    expect(region.getWaveTick()).toBe(67);
   });
 });

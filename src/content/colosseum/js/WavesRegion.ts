@@ -177,7 +177,7 @@ export class WavesRegion extends ColosseumRegion {
   private spawnEligibilityPlayerLocation: { x: number; y: number } | null = null;
   private waveStateListeners = new Set<() => void>();
   private waveTick = 0;
-  private readonly losWaveImport: LosWaveImport | null;
+  private losWaveImport: LosWaveImport | null;
   private importedReinforcements: ImportedReinforcements = "none";
 
   constructor(loadouts: Loadout[] = [colosseumLoadout]) {
@@ -275,8 +275,6 @@ export class WavesRegion extends ColosseumRegion {
 
   readonly isLosWaveImport = () => this.losWaveImport !== null;
 
-  readonly isLosWaveStartImport = () => this.losWaveImport?.fromWaveStart === true;
-
   readonly subscribeWaveState = (listener: () => void) => {
     this.waveStateListeners.add(listener);
     return () => this.waveStateListeners.delete(listener);
@@ -290,8 +288,14 @@ export class WavesRegion extends ColosseumRegion {
 
   readonly getImportedReinforcements = () => this.importedReinforcements;
 
+  importLosWave(imported: LosWaveImport) {
+    this.losWaveImport = imported;
+    this.importedReinforcements = "none";
+    this.reset();
+  }
+
   setImportedReinforcements(reinforcements: ImportedReinforcements) {
-    if (this.wavePhase !== "waiting" || !this.losWaveImport?.fromWaveStart) return;
+    if (this.wavePhase !== "waiting" || !this.losWaveImport) return;
     this.importedReinforcements = reinforcements;
     this.notifyWaveStateChanged();
   }
@@ -484,7 +488,7 @@ export class WavesRegion extends ColosseumRegion {
       this.addMob(mob);
     });
     this.wavePhase = "active";
-    const spawnImportedReinforcements = imported.fromWaveStart && this.importedReinforcements !== "none";
+    const spawnImportedReinforcements = this.importedReinforcements !== "none";
     this.reinforcementsSpawned = !spawnImportedReinforcements;
     this.reinforcementTicks = spawnImportedReinforcements ? REINFORCEMENT_DELAY_TICKS : 0;
     if (imported.fromWaveStart) this.spawnFremennikWarband(player, true);

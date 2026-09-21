@@ -1,44 +1,74 @@
 "use strict";
 
-export class ColosseumSettings {
-  
-  static useShields = true;
-  static useSpears = true;
-  static useTriple = true;
-  static useGrapple = true;
-  static usePhaseTransitions = true;
-  static solarFlareLevel = 1;
-  static showSolarFlareTiles = false;
-  static echoMaxHp = false;
-  static echoEnrage = false;
-  static echoLasers = false;
-  static betaBannerDismissed = false;
+import {
+  createJsonSettingsStorage,
+  createSettingsStore,
+  SettingsStorage,
+} from "osrs-sdk";
 
-  static persistToStorage() {
-    window.localStorage.setItem("useShields", String(ColosseumSettings.useShields));
-    window.localStorage.setItem("useSpears", String(ColosseumSettings.useSpears));
-    window.localStorage.setItem("useTriple", String(ColosseumSettings.useTriple));
-    window.localStorage.setItem("useGrapple", String(ColosseumSettings.useGrapple));
-    window.localStorage.setItem("usePhaseTransitions", String(ColosseumSettings.usePhaseTransitions));
-    window.localStorage.setItem("solarFlareLevel", String(ColosseumSettings.solarFlareLevel));
-    window.localStorage.setItem("showSolarFlareTiles", String(ColosseumSettings.showSolarFlareTiles));
-    window.localStorage.setItem("echoMaxHp", String(ColosseumSettings.echoMaxHp));
-    window.localStorage.setItem("echoEnrage", String(ColosseumSettings.echoEnrage));
-    window.localStorage.setItem("echoLasers", String(ColosseumSettings.echoLasers));
-    window.localStorage.setItem("betaBannerDismissed", String(ColosseumSettings.betaBannerDismissed));
-  }
+export type ColosseumSettingsState = {
+  forceDoubleSouth: boolean;
+  npcsAggressive: boolean;
+  waveNumber: number;
+  showSolarFlareTiles: boolean;
+  solarFlareLevel: number;
+  useGrapple: boolean;
+  usePhaseTransitions: boolean;
+  useShields: boolean;
+  useSpears: boolean;
+  useTriple: boolean;
+};
 
-  static readFromStorage() {
-    ColosseumSettings.useShields = window.localStorage.getItem("useShields") !== "false" || false;
-    ColosseumSettings.useSpears = window.localStorage.getItem("useSpears") !== "false" || false;
-    ColosseumSettings.useTriple = window.localStorage.getItem("useTriple") !== "false" || false;
-    ColosseumSettings.useGrapple = window.localStorage.getItem("useGrapple") !== "false" || false;
-    ColosseumSettings.usePhaseTransitions = window.localStorage.getItem("usePhaseTransitions") !== "false" || false;
-    ColosseumSettings.solarFlareLevel = parseInt(window.localStorage.getItem("solarFlareLevel") ?? '1');
-    ColosseumSettings.showSolarFlareTiles = window.localStorage.getItem("showSolarFlareTiles") === "true";
-    ColosseumSettings.echoMaxHp = window.localStorage.getItem("echoMaxHp") === "true";
-    ColosseumSettings.echoEnrage = window.localStorage.getItem("echoEnrage") === "true";
-    ColosseumSettings.echoLasers = window.localStorage.getItem("echoLasers") === "true";
-    ColosseumSettings.betaBannerDismissed = window.localStorage.getItem("betaBannerDismissed") === "true";
-  }
-}
+const STORAGE_KEY = "colosseum-trainer:settings";
+const defaults: ColosseumSettingsState = {
+  forceDoubleSouth: false,
+  npcsAggressive: true,
+  waveNumber: 10,
+  showSolarFlareTiles: false,
+  solarFlareLevel: 1,
+  useGrapple: true,
+  usePhaseTransitions: true,
+  useShields: true,
+  useSpears: true,
+  useTriple: true,
+};
+
+const jsonStorage = createJsonSettingsStorage<ColosseumSettingsState>(STORAGE_KEY, 1);
+
+// Import the trainer's original one-key-per-setting values the first time the
+// consolidated store is loaded. The legacy keys can remain for rollback/debugging.
+const storage: SettingsStorage<ColosseumSettingsState> = {
+  load(fallbacks) {
+    if (window.localStorage.getItem(STORAGE_KEY) !== null) {
+      const loaded = jsonStorage.load(fallbacks);
+      return {
+        ...loaded,
+        waveNumber: Math.max(1, Math.min(11, Math.trunc(Number(loaded.waveNumber) || fallbacks.waveNumber))),
+      };
+    }
+
+    const legacySolarFlareLevel = Number.parseInt(
+      window.localStorage.getItem("solarFlareLevel") ?? String(fallbacks.solarFlareLevel),
+      10,
+    );
+    const migrated = {
+      forceDoubleSouth: false,
+      npcsAggressive: true,
+      waveNumber: 10,
+      showSolarFlareTiles: window.localStorage.getItem("showSolarFlareTiles") === "true",
+      solarFlareLevel: Number.isFinite(legacySolarFlareLevel)
+        ? legacySolarFlareLevel
+        : fallbacks.solarFlareLevel,
+      useGrapple: window.localStorage.getItem("useGrapple") !== "false",
+      usePhaseTransitions: window.localStorage.getItem("usePhaseTransitions") !== "false",
+      useShields: window.localStorage.getItem("useShields") !== "false",
+      useSpears: window.localStorage.getItem("useSpears") !== "false",
+      useTriple: window.localStorage.getItem("useTriple") !== "false",
+    };
+    jsonStorage.save(migrated);
+    return migrated;
+  },
+  save: jsonStorage.save,
+};
+
+export const colosseumSettings = createSettingsStore({ defaults, storage });

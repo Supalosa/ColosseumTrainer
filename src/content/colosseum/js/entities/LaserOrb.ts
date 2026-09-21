@@ -1,3 +1,4 @@
+import { COLOSSEUM_ASSETS } from "../../../../assets";
 "use strict";
 
 import {
@@ -11,6 +12,8 @@ import {
   Pathing,
   Location,
   Trainer,
+  GraphicsObject,
+  DelayedAction,
 } from "osrs-sdk";
 
 import _ from "lodash";
@@ -58,6 +61,38 @@ const pickLocation = (edge: Edge): Location => {
   return { x, y };
 };
 
+// Keep the first pass deliberately simple: each placed cache graphic starts
+// two client cycles (about 40ms) after the prior tile, producing a slow sweep
+// from the firing orb across the arena.
+const VERTICAL_LASER_TILE_DELAY = 2;
+// The orb's game-tick firing window starts the cache charge graphic first;
+// begin the attack graphic roughly three game ticks later (90 client cycles),
+// matching the old custom beam's first visible firing frame.
+const VERTICAL_LASER_CHARGE_TO_FIRE_DELAY = 90;
+const LASER_LENGTH = {
+  vertical: ColosseumConstants.ARENA_SOUTH - ColosseumConstants.ARENA_NORTH - 1,
+  horizontal: ColosseumConstants.ARENA_EAST - ColosseumConstants.ARENA_WEST - 1,
+};
+
+const LASER_SPOT_ANIMS: { [edge in Edge]: { charge: number; fire: number } } = {
+  [Edge.SOUTH]: {
+    charge: COLOSSEUM_ASSETS.spotAnims.laserSouthCharge.id,
+    fire: COLOSSEUM_ASSETS.spotAnims.laserSouthFire.id,
+  },
+  [Edge.WEST]: {
+    charge: COLOSSEUM_ASSETS.spotAnims.laserWestCharge.id,
+    fire: COLOSSEUM_ASSETS.spotAnims.laserWestFire.id,
+  },
+  [Edge.NORTH]: {
+    charge: COLOSSEUM_ASSETS.spotAnims.laserNorthCharge.id,
+    fire: COLOSSEUM_ASSETS.spotAnims.laserNorthFire.id,
+  },
+  [Edge.EAST]: {
+    charge: COLOSSEUM_ASSETS.spotAnims.laserEastCharge.id,
+    fire: COLOSSEUM_ASSETS.spotAnims.laserEastFire.id,
+  },
+};
+
 export class LaserOrb extends Entity {
   age = 0;
   moveTick = 4;
@@ -65,9 +100,6 @@ export class LaserOrb extends Entity {
   lastLocation: Location;
   firingFreeze = 0;
   private boundaries: [Location, Location];
-
-  // if >0, this orb follows the player
-  echoFollowDuration = 0;
 
   static onEdge(region: Region, edge: Edge) {
     const boundaries = pickLocation(edge);
@@ -94,7 +126,6 @@ export class LaserOrb extends Entity {
       x: this.location.x,
       y: this.location.y,
     };
-    this.echoFollowDuration = 0;
   }
 
   create3dModel() {
@@ -119,6 +150,34 @@ export class LaserOrb extends Entity {
 
   public fire() {
     this.firingFreeze = 9;
+    const { charge, fire } = LASER_SPOT_ANIMS[this.edge];
+    DelayedAction.registerDelayedAction(new DelayedAction(() => {
+      this.spawnLaserLine(charge, 0);
+    }, 3));
+    DelayedAction.registerDelayedAction(new DelayedAction(() => {
+        this.spawnLaserLine(fire, VERTICAL_LASER_CHARGE_TO_FIRE_DELAY);
+    }, 4));
+  }
+
+  private spawnLaserLine(spotAnimId: number, delayOffset: number) {
+    const direction = ORB_SHOOT_DIRECTIONS[this.edge];
+    const length = this.edge === Edge.NORTH || this.edge === Edge.SOUTH
+      ? LASER_LENGTH.vertical
+      : LASER_LENGTH.horizontal;
+    for (let index = 0; index < length; index++) {
+      this.region.addEntity(new GraphicsObject(
+        this.region,
+        {
+          x: this.location.x + direction.x * index,
+          y: this.location.y + direction.y * index,
+        },
+        spotAnimId,
+        {
+          delay: delayOffset + index * VERTICAL_LASER_TILE_DELAY,
+          height: 0.5,
+        },
+      ));
+    }
   }
 
   get isFiring() {
@@ -147,28 +206,13 @@ export class LaserOrb extends Entity {
 
   tick() {
     const player = Trainer.player;
-    if (this.echoFollowDuration > 0) {
-      --this.echoFollowDuration;
-      if ((this.direction.x > 0 && this.location.x > player.location.x) || (this.direction.x < 0 && this.location.x < player.location.x)) {
-        this.direction.x *= -1;
-      } else {
-        this.direction.x *= -1;
-      }
-      if ((this.direction.y > 0 && this.location.y > player.location.y) || (this.direction.y < 0 && this.location.y < player.location.y)) {
-        this.direction.y *= -1;
-      } else {
-        this.direction.y *= -1;
-      }
-    }
     if (this.firingFreeze <= 0 && this.moveTick <= 0) {
       this.lastLocation = {
         x: this.location.x,
         y: this.location.y,
       };
-      if (this.echoFollowDuration <= 0 || !this.isInLineWithPlayer()) {
-        this.location.x += this.direction.x;
-        this.location.y += this.direction.y;
-      }
+      this.location.x += this.direction.x;
+      this.location.y += this.direction.y;
       // reverse direction
       if (
         (this.location.x === this.boundaries[0].x && this.location.y === this.boundaries[0].y) ||
@@ -187,10 +231,6 @@ export class LaserOrb extends Entity {
 
     --this.moveTick;
     --this.firingFreeze;
-  }
-
-  echoFollowPlayer(ticks: number) {
-    this.echoFollowDuration = ticks;
   }
 
   isInLineWithPlayer() {

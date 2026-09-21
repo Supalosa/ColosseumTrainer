@@ -28,15 +28,23 @@ const config = {
     contentBase: path.join(__dirname, "dist"),
     compress: true,
     port: 8000,
+    host: "0.0.0.0",
+    disableHostCheck: true,
   },
   resolve: {
     extensions: [".tsx", ".ts", ".js"],
+    alias: {
+      react: path.resolve(__dirname, "node_modules/react"),
+      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
+    },
   },
   plugins: [
     new CopyPlugin({
       patterns: [
+        { from: "public/osrs-assets", to: "osrs-assets", noErrorOnMissing: true },
         { from: `index.html`, to: "", context: `src/` },
         { from: `index.html`, to: "colosseum.html", context: `src/` },
+        { from: `index.html`, to: "waves.html", context: `src/` },
         { from: `manifest.json`, to: "", context: `src/` },
         {
           from: `assets/images/webappicon.png`,
@@ -49,6 +57,9 @@ const config = {
       ],
     }),
     new webpack.EnvironmentPlugin(["COMMIT_REF", "BUILD_DATE", "DEPLOY_URL"]),
+    new webpack.DefinePlugin({
+      __OSRS_CACHE_RENDER_MANIFEST_URL__: JSON.stringify(process.env.OSRS_CACHE_RENDER_MANIFEST_URL || ""),
+    }),
   ],
   module: {
     rules: [

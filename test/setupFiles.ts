@@ -1,34 +1,12 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
 
-const canvasContext = {
-  arc: jest.fn(),
-  beginPath: jest.fn(),
-  clearRect: jest.fn(),
-  closePath: jest.fn(),
-  drawImage: jest.fn(),
-  fill: jest.fn(),
-  fillRect: jest.fn(),
-  fillText: jest.fn(),
-  lineTo: jest.fn(),
-  measureText: jest.fn(() => ({ width: 0 })),
-  moveTo: jest.fn(),
-  restore: jest.fn(),
-  rotate: jest.fn(),
-  save: jest.fn(),
-  scale: jest.fn(),
-  setTransform: jest.fn(),
-  stroke: jest.fn(),
-  strokeText: jest.fn(),
-  translate: jest.fn(),
-};
-
 global.OffscreenCanvas = jest.fn().mockImplementation((width: number, height: number) => {
   return {
     height,
     width,
     oncontextlost: jest.fn(),
     oncontextrestored: jest.fn(),
-    getContext: jest.fn(() => canvasContext),
+    getContext: jest.fn(() => undefined),
     convertToBlob: jest.fn(),
     transferToImageBitmap: jest.fn(),
     addEventListener: jest.fn(),
@@ -37,30 +15,60 @@ global.OffscreenCanvas = jest.fn().mockImplementation((width: number, height: nu
   };
 });
 
-jest.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => canvasContext as any);
-
 global.fetch = jest.fn().mockImplementation(() => ({
-  arrayBuffer: async () => new ArrayBuffer(0),
-  statusText: "OK",
+  arrayBuffer: () => new ArrayBuffer(0),
 }));
 
+Object.defineProperty(globalThis, "ResizeObserver", {
+  configurable: true,
+  value: class ResizeObserverMock {
+    constructor(private readonly callback: (entries: Array<{ contentRect: { width: number; height: number } }>) => void) {}
+
+    observe() {
+      this.callback([{ contentRect: { width: window.innerWidth, height: window.innerHeight } }]);
+    }
+
+    disconnect() {}
+  },
+});
+
 jest.mock("osrs-sdk", () => {
-  const originalModule = jest.requireActual<typeof import("osrs-sdk")>("osrs-sdk");
-  originalModule.Settings.readFromStorage();
+  const originalModule = jest.requireActual<typeof import("osrs-sdk")>(
+    "osrs-sdk",
+  );
   return {
     ...originalModule,
     Assets: {
       getAssetUrl(x: any) {
         return x;
-      },
+      }
     },
     SoundCache: {
       preload() {},
-      play() {},
-    },
+      play() {}
+    }
   };
 });
 
+jest.mock("three", () => ({
+  Scene: class Scene {
+    public add(): void {
+      return;
+    }
+  },
+  WebGLRenderer: class WebGlRenderer {
+    public render(): void {
+      return;
+    }
+    public setSize(): void {
+      return;
+    }
+  },
+  GLTFLoader: class GLTFLoader {
+    constructor() {}
+    setMeshoptDecoder() {}
+  },
+}));
 jest.spyOn(document, "getElementById").mockImplementation((elementId: string) => {
   const c = document.createElement("canvas");
   c.ariaLabel = elementId;
@@ -79,3 +87,5 @@ Random.setRandom(() => {
 
 Settings.readFromStorage();
 */
+
+jest.requireMock<typeof import("osrs-sdk")>("osrs-sdk").Settings.readFromStorage();

@@ -1,8 +1,6 @@
 "use strict";
 
-import { Weapon, Unit, AttackBonuses, ProjectileOptions, Random, Projectile, Entity, Region, CollisionType, LineOfSightMask, Location } from "osrs-sdk";
-
-import { GroundSlamModel } from "../rendering/GroundSlamModel";
+import { Weapon, Unit, AttackBonuses, ProjectileOptions, Random, Projectile, Entity, Region, CollisionType, LineOfSightMask, Location, CacheRenderInstancedModel, CacheRenderReferences } from "osrs-sdk";
 
 class SolGroundSlamWeapon extends Weapon {
   calculateHitDelay(distance: number) {
@@ -34,8 +32,7 @@ export class SolGroundSlam extends Entity {
     from: Unit,
     to: Unit,
     // number from 0-1 to delay the visual effect in ticks
-    private delay: number | null = 0,
-    private creationTick: number
+    private delay: number | null = 0
   ) {
     super(region, location);
     this.from = from;
@@ -43,7 +40,11 @@ export class SolGroundSlam extends Entity {
   }
 
   create3dModel() {
-    return GroundSlamModel.forGroundSlam(this, this.creationTick);
+    return CacheRenderInstancedModel.forRenderable(this, CacheRenderReferences.spotAnim([{
+      id: 2669,
+      delay: this.delay ?? 0,
+      height: 0,
+    }]));
   }
 
   get color() {

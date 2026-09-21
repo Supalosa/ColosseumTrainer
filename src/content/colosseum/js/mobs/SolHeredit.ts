@@ -1,17 +1,19 @@
+import { COLOSSEUM_ASSETS } from "../../../../assets";
 "use strict";
 
 import _ from "lodash";
 
 import {
-  Assets,
+  CacheRenderModel,
+  CacheRenderReferences,
   DelayedAction,
   EquipmentControls,
-  GLTFModel,
   Collision,
   Region,
   Location,
   EquipmentTypes,
   AttackIndicators,
+  cacheSound,
   Mob,
   Pathing,
   Random,
@@ -21,36 +23,31 @@ import {
   Sound,
   SoundCache,
   Trainer,
+  Viewport,
+  GraphicsObject,
 } from "osrs-sdk";
 
 import { SolGroundSlam } from "../entities/SolGroundSlam";
-import { RingBuffer } from "../utils/RingBuffer";
-import { ColosseumSettings } from "../ColosseumSettings";
-
-import SpearStart from "../../assets/sounds/8147_spear.ogg";
-import SpearEnd from "../../assets/sounds/8047_spear_swing.ogg";
-import ShieldStart from "../../assets/sounds/8150_shield_start.ogg";
-import ShieldEnd from "../../assets/sounds/8145_shield_stomp.ogg";
-import TripleStart from "../../assets/sounds/8211_triple_charge.ogg";
-import TripleCharge1 from "../../assets/sounds/8317_triple_charge_1.ogg";
-import TripleCharge2 from "../../assets/sounds/8274_triple_charge_2.ogg";
-import TripleCharge3Short from "../../assets/sounds/8218_triple_charge_3_short.ogg";
-import TripleCharge3Long from "../../assets/sounds/8113_triple_charge_3_long.ogg";
+import { colosseumSettings } from "../ColosseumSettings";
 import TripleParry1 from "../../assets/sounds/8140_triple_parry_1.ogg";
 import TripleParry2 from "../../assets/sounds/8171_triple_parry_2.ogg";
 import TripleParry3 from "../../assets/sounds/8242_triple_parry_3.ogg";
-import GrappleCharge from "../../assets/sounds/8329_grapple_charge.ogg";
-import GrappleParry from "../../assets/sounds/8081_grapple_parry.ogg";
-import PoolSpawn from "../../assets/sounds/8053_pool_spawn.ogg";
-import PoolShriek from "../../assets/sounds/8093_pool_shriek.ogg";
-import LaserCharge from "../../assets/sounds/8253_laser.ogg";
-import LaserFire from "../../assets/sounds/8230_laser_fire.ogg";
 
 import { SolSandPool } from "../entities/SolSandPool";
 import { Edge, LaserOrb } from "../entities/LaserOrb";
 import { ColosseumConstants } from "../Constants";
+import { Button } from "osrs-sdk";
 
-export const SolHereditModel = Assets.getAssetUrl("models/sol2.glb");
+const PLAYER_DEATH_TAUNTS = [
+  "How disappointing...",
+  "I knew you weren't the one.",
+  "You had me excited for a moment.",
+  "Your lack of coordination is concerning.",
+  "Your light shines no more.",
+  "Maybe next time...",
+  "Pathetic, really...",
+  "I was just getting into my rhythm...",
+];
 
 enum SolAnimations {
   Idle = 0, // 10874
@@ -61,6 +58,7 @@ enum SolAnimations {
   TripleAttackLong = 5, // 10886
   TripleAttackShort = 6, // 10887
   Death = 7, // 10888
+  Land = 8, // 10877
 }
 
 enum AttackDirection {
@@ -85,27 +83,27 @@ const DIRECTIONS = [
   { dx: -1, dy: 1 },
 ];
 
-const SPEAR_START = new Sound(SpearStart, 0.1);
-const SPEAR_END = new Sound(SpearEnd, 0.1);
-const SHIELD_START = new Sound(ShieldStart, 0.1);
-const SHIELD_END = new Sound(ShieldEnd, 0.1);
-const TRIPLE_START = new Sound(TripleStart, 0.1);
-const TRIPLE_CHARGE_1 = new Sound(TripleCharge1, 0.1);
-const TRIPLE_CHARGE_2 = new Sound(TripleCharge2, 0.1);
-const TRIPLE_CHARGE_3_SHORT = new Sound(TripleCharge3Short, 0.1);
-const TRIPLE_CHARGE_3_LONG = new Sound(TripleCharge3Long, 0.1);
+// Empirically it seems like all the frame sounds (where pretty much all of Sol's sounds come from)
+// are delayed by 240ms. I haven't done enough testing to know if this is true for all framesounsd in the engine
+// so we added a way to configure the delay per-model.
+const SOL_FRAME_SOUNDS_DELAY_MS = 240;
 
-const TRIPLE_PARRY_1 = new Sound(TripleParry1, 0.1);
-const TRIPLE_PARRY_2 = new Sound(TripleParry2, 0.1);
-const TRIPLE_PARRY_3 = new Sound(TripleParry3, 0.1);
+const TRIPLE_PARRY_1 = new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.solTripleParry1.id), 0.1);
+const TRIPLE_PARRY_2 = new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.solTripleParry2.id), 0.1);
+const TRIPLE_PARRY_3 = new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.solTripleParry3.id), 0.1);
 
-const GRAPPLE_CHARGE = new Sound(GrappleCharge, 0.1);
-const GRAPPLE_PARRY = new Sound(GrappleParry, 0.1);
 
-const POOL_SPAWN = new Sound(PoolSpawn, 0.1);
-const POOL_SHRIEK = new Sound(PoolShriek, 0.1);
-const LASER_CHARGE = new Sound(LaserCharge, 0.1);
-const LASER_FIRE = new Sound(LaserFire, 0.1);
+const POOL_SPAWN = new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.solPoolSpawn.id), 0.1);
+const POOL_SHRIEK = new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.solPoolShriek.id), 0.1);
+const LASER_CHARGE = new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.solLaserCharge.id), 0.1);
+const LASER_FIRE = new Sound(cacheSound(COLOSSEUM_ASSETS.sounds.solLaserFire.id), 0.1);
+
+const SOL_SOUNDS = [
+  POOL_SPAWN,
+  POOL_SHRIEK,
+  LASER_CHARGE,
+  LASER_FIRE,
+];
 
 const SPECIAL_ATTACK_COOLDOWN = 2;
 
@@ -135,6 +133,14 @@ const GRAPPLE_SLOTS: { [slot in EquipmentTypes]?: string } = {
   [EquipmentTypes.FEET]: "<col=ff0000>I'LL CUT YOUR </color><col=ffffff>FEET</color><col=ff0000> OFF!</color>",
 };
 
+const GRAPPLE_BODY_PARTS: { [slot in EquipmentTypes]?: string } = {
+  [EquipmentTypes.CHEST]: "body",
+  [EquipmentTypes.BACK]: "back",
+  [EquipmentTypes.GLOVES]: "hands",
+  [EquipmentTypes.LEGS]: "legs",
+  [EquipmentTypes.FEET]: "feet",
+};
+
 // used when the player messed up the parry
 class ParryUnblockableWeapon extends MeleeWeapon {
   override isBlockable() {
@@ -145,6 +151,11 @@ class ParryUnblockableWeapon extends MeleeWeapon {
 const MIN_LASER_ORB_COOLDOWN = 25;
 const MAX_LASER_ORB_COOLDOWN = 35;
 const ENRAGE_LASER_ORB_COOLDOWN = 12;
+// Temporary visual test mode: put all four crystal orbs on the perimeter and
+// fire them on a predictable cadence instead of waiting for phase transitions.
+const LASER_TEST_MODE = false;
+const LASER_TEST_FIRE_INTERVAL = 10;
+const PROTECTION_PRAYERS = ["Protect from Melee", "Protect from Range", "Protect from Magic"];
 
 export class SolHeredit extends Mob {
   shouldRespawnMobs: boolean;
@@ -154,7 +165,7 @@ export class SolHeredit extends Mob {
 
   specialAttackCooldown = 0;
 
-  forceAttack: Attacks | null = Attacks.SPEAR; // first attack is always a spear?
+  forceAttack: Attacks | null = Attacks.SPEAR; // first attack is always a spear
 
   lastLocation = { ...this.location };
 
@@ -163,22 +174,26 @@ export class SolHeredit extends Mob {
 
   phaseId = -1;
   poolCache: { [xy: string]: boolean } = {};
+  private groundSlamTick = -1;
+  private groundSlamTiles = new Set<string>();
   finalPhasePoolTimer = 7; // once the phase transition is up
-
-  // melee prayer overhead history of target
-  overheadHistory: RingBuffer = new RingBuffer(5);
 
   stationaryTimer = 0;
 
   // for instancing of slams
   tickNumber = 0;
+  private grappleParryMessage: string | null = null;
+  private grappleParryMessageTimer = 0;
+  private eagerPrayerMessage: string | null = null;
+  private eagerPrayerMessageTimer = 0;
+  private tripleParryAttackTicks: number[] = [];
 
   mobName() {
     return "Sol Heredit";
   }
 
   shouldChangeAggro(projectile: Projectile) {
-    return this.aggro != projectile.from && this.autoRetaliate;
+    return !this.isFrozen() && this.aggro != projectile.from && this.autoRetaliate;
   }
 
   get combatLevel() {
@@ -193,13 +208,25 @@ export class SolHeredit extends Mob {
     return true;
   }
 
+  get clickboxRadius() {
+    // Sol's decoded model is the intended geometric clickbox.
+    return null;
+  }
+
   dead() {
     super.dead();
+    Viewport.viewport.components.push(new Button("Reset", 120, 60, () => Trainer.reset()));
+  }
+
+  tauntPlayerDeath() {
+    this.overheadText = PLAYER_DEATH_TAUNTS[Math.floor(Random.get() * PLAYER_DEATH_TAUNTS.length)];
+    this.overheadTextTimer = 8;
   }
 
   setStats() {
     this.laserOrbs = [];
     this.stunned = 4;
+    this.attackDelay = 6;
     this.weapons = {
       stab: new MeleeWeapon(),
     };
@@ -210,11 +237,19 @@ export class SolHeredit extends Mob {
       defence: 200,
       range: 350,
       magic: 300,
-      hitpoint: ColosseumSettings.echoMaxHp ? 1725 : 1500,
+      hitpoint: 1500,
     };
 
     // with boosts
     this.currentStats = JSON.parse(JSON.stringify(this.stats));
+
+    this.playAnimation(SolAnimations.Land);
+    this.setRotationImmediate(Math.PI * 1.5); // south
+
+    if (LASER_TEST_MODE) {
+      // createLaserOrb() chooses the next cardinal edge in order.
+      for (let i = 0; i < 4; i++) this.createLaserOrb();
+    }
   }
 
   get bonuses(): UnitBonuses {
@@ -223,7 +258,7 @@ export class SolHeredit extends Mob {
         stab: 250,
         slash: 0,
         crush: 0,
-        magic: 80,
+        magic: 0,
         range: 150,
       },
       defence: {
@@ -234,7 +269,7 @@ export class SolHeredit extends Mob {
         range: 825,
       },
       other: {
-        meleeStrength: 0,
+        meleeStrength: 5,
         rangedStrength: 5,
         magicDamage: 1.0,
         prayer: 0,
@@ -260,8 +295,7 @@ export class SolHeredit extends Mob {
   }
 
   get attackSpeed() {
-    // irrelevant
-    return 7;
+    return 0;
   }
 
   get attackRange() {
@@ -270,6 +304,12 @@ export class SolHeredit extends Mob {
 
   get size() {
     return 5;
+  }
+
+  // The unanimated cache model is 360 units tall and NPC 12821 applies a
+  // vertical scale of 300/128. Convert cache units to world tiles.
+  override get logicalHeight() {
+    return (360 * (300 / 128)) / 128;
   }
 
   attackStyleForNewAttack() {
@@ -293,16 +333,23 @@ export class SolHeredit extends Mob {
   }
 
   attackIfPossible() {
+    if (this.grappleParryMessageTimer > 0 && --this.grappleParryMessageTimer === 0) {
+      this.grappleParryMessage = null;
+    }
+    if (this.eagerPrayerMessageTimer > 0 && --this.eagerPrayerMessageTimer === 0) {
+      this.eagerPrayerMessage = null;
+    }
     this.tickNumber++;
     this.laserOrbCooldown--;
-    const overhead = this.aggro?.prayerController.overhead();
-    this.overheadHistory.push(overhead && (["Protect from Melee", "Protect from Range", "Protect from Magic"].includes(overhead.name)));
+    if (LASER_TEST_MODE && this.tickNumber % LASER_TEST_FIRE_INTERVAL === 0) {
+      this.fireOrbs();
+    }
     this.attackStyle = this.attackStyleForNewAttack();
 
     this.attackFeedback = AttackIndicators.NONE;
 
     if (
-      ColosseumSettings.usePhaseTransitions &&
+      colosseumSettings.getSnapshot().usePhaseTransitions &&
       this.attackDelay <= 0 &&
       this.phaseId < PHASE_TRANSITION_POINTS.length - 1
     ) {
@@ -316,7 +363,7 @@ export class SolHeredit extends Mob {
         this.setOverheadText(message);
       }
     }
-    if ((this.phaseId === 5 || ColosseumSettings.echoEnrage) && this.aggro) {
+    if (this.phaseId === 5 && this.aggro) {
       if (--this.finalPhasePoolTimer === 0) {
         this.tryPlacePools(this.aggro.location.x, this.aggro.location.y, 1);
         this.finalPhasePoolTimer = 3;
@@ -327,12 +374,22 @@ export class SolHeredit extends Mob {
       return;
     }
 
+    this.punishEagerProtectionPrayer();
+
     this.hadLOS = this.hasLOS;
     // override LOS check to attack melee diagonally
     const [tx, ty] = this.getClosestTileTo(this.aggro.location.x, this.aggro.location.y);
     const dx = this.aggro.location.x - tx,
       dy = this.aggro.location.y - ty;
     const isAdjacent = Math.abs(dx) <= 1 && Math.abs(dy) <= 1;
+    const targetIsUnderSol = Collision.collisionMath(
+      this.location.x,
+      this.location.y,
+      this.size,
+      this.aggro.location.x,
+      this.aggro.location.y,
+      this.aggro.size,
+    );
     this.hasLOS = isAdjacent;
 
     if (this.canAttack() === false) {
@@ -341,7 +398,7 @@ export class SolHeredit extends Mob {
 
     // can phase without being in range
     const inRange = this.hasLOS || this.forceAttack === Attacks.PHASE_TRANSITION;
-    if (inRange && this.attackDelay <= 0 && this.stationaryTimer > 0) {
+    if (inRange && this.attackDelay <= 0 && (this.stationaryTimer > 0 || targetIsUnderSol)) {
       const nextAttack = this.selectAttack();
       this.forceAttack = null;
       let nextDelay = 0;
@@ -367,6 +424,7 @@ export class SolHeredit extends Mob {
           nextDelay = this.attackGrapple();
           break;
         case Attacks.PHASE_TRANSITION:
+          this.specialAttackCooldown = SPECIAL_ATTACK_COOLDOWN;
           this.forceAttack = Attacks.SPEAR;
           nextDelay = this.phaseTransition(this.phaseId);
           break;
@@ -374,31 +432,60 @@ export class SolHeredit extends Mob {
       this.didAttack();
       this.attackDelay = nextDelay;
       // trigger laser orbs on anything but a phase transition
-      if (nextAttack !== Attacks.PHASE_TRANSITION && this.laserOrbs.length > 0 && this.laserOrbCooldown < 0) {
+      if (!LASER_TEST_MODE && nextAttack !== Attacks.PHASE_TRANSITION && this.laserOrbs.length > 0 && this.laserOrbCooldown < 0) {
         this.fireOrbs();
       }
     }
   }
 
-  private selectAttack() {
-    if (this.forceAttack) {
+  private getUserSelectedAttacks() {
+    // Attacks selected in the UI, not necessarily what's possible in the game.
+    const attacks = new Set<Attacks>();
+    const settings = colosseumSettings.getSnapshot();
+    if (settings.useSpears) {
+      attacks.add(Attacks.SPEAR);
+    }
+    if (settings.useShields) {
+      attacks.add(Attacks.SHIELD);
+    }
+    if (settings.useTriple) {
+      attacks.add(Attacks.TRIPLE_SHORT);
+    }
+    if (settings.useGrapple) {
+      attacks.add(Attacks.GRAPPLE);
+    }
+    if (settings.usePhaseTransitions) {
+      attacks.add(Attacks.PHASE_TRANSITION);
+    }
+    return attacks;
+  }
+
+  private selectAttack(): Attacks | null {
+    const settings = colosseumSettings.getSnapshot();
+    const selectedAttacks = this.getUserSelectedAttacks();
+    // check we can actually do a forced attack
+    if (this.forceAttack && selectedAttacks.has(this.forceAttack)) {
       return this.forceAttack;
     }
+    this.forceAttack = null;
+
     const canSpecial = this.specialAttackCooldown <= 0;
 
-    const attackPool = [
-      // hacky 2x weighting for autos
-      ...(ColosseumSettings.useShields && [Attacks.SHIELD]),
-      ...(ColosseumSettings.useShields && [Attacks.SHIELD]),
-      ...(ColosseumSettings.useSpears && [Attacks.SPEAR]),
-      ...(ColosseumSettings.useSpears && [Attacks.SPEAR]),
-      ...(ColosseumSettings.useTriple && canSpecial && this.phaseId >= 3 && [Attacks.TRIPLE_LONG]),
-      ...(ColosseumSettings.useTriple && canSpecial && this.phaseId >= 1 && this.phaseId < 3 && [Attacks.TRIPLE_SHORT]),
-      ...(ColosseumSettings.useGrapple && canSpecial && this.phaseId >= 2 && [Attacks.GRAPPLE]),
+    const attackPool: Attacks[] = [
+      // hacky 4x weighting for autos
+      ...(settings.useShields ? [Attacks.SHIELD, Attacks.SHIELD, Attacks.SHIELD, Attacks.SHIELD] : []),
+      ...(settings.useSpears ? [Attacks.SPEAR, Attacks.SPEAR, Attacks.SPEAR, Attacks.SPEAR] : []),
+      ...(settings.useTriple && canSpecial && this.phaseId >= 3 ? [Attacks.TRIPLE_LONG] : []),
+      ...(settings.useTriple && canSpecial && this.phaseId >= 1 && this.phaseId < 3 ? [Attacks.TRIPLE_SHORT] : []),
+      ...(settings.useGrapple && canSpecial && this.phaseId >= 2 ? [Attacks.GRAPPLE] : []),
     ];
     if (attackPool.length === 0) {
       // at least allow it to do something
       this.specialAttackCooldown = 0;
+      // forced an single attack  (and it can't do that attack due to phasing, for example), so allow it anyway
+      if (selectedAttacks.size > 0) {
+        return selectedAttacks.values().next().value!;
+      }
       return null;
     }
     return attackPool[Math.floor(Random.get() * attackPool.length)];
@@ -407,11 +494,9 @@ export class SolHeredit extends Mob {
   private attackSpear() {
     this.freeze(6);
     this.playAnimation(SolAnimations.SpearSlow);
-    SoundCache.play(SPEAR_START);
     DelayedAction.registerDelayedAction(
       new DelayedAction(this.firstSpear ? this.doFirstSpear.bind(this) : this.doSecondSpear.bind(this), 2),
     );
-    DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(SPEAR_END), 3));
     this.firstSpear = !this.firstSpear;
     this.firstShield = true;
     return this.phaseId < 2 ? 7 : 6;
@@ -420,11 +505,9 @@ export class SolHeredit extends Mob {
   private attackShield() {
     this.freeze(4);
     this.playAnimation(SolAnimations.Shield);
-    SoundCache.play(SHIELD_START);
     DelayedAction.registerDelayedAction(
       new DelayedAction(this.firstShield ? this.doFirstShield.bind(this) : this.doSecondShield.bind(this), 2),
     );
-    DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(SHIELD_END), 3));
     this.firstSpear = true;
     this.firstShield = !this.firstShield;
     return this.phaseId < 2 ? 6 : 5;
@@ -439,17 +522,34 @@ export class SolHeredit extends Mob {
     const radius = (Math.abs(fromX - toX) - 1) / 2 + 1;
     for (let xx = fromX; xx < toX; ++xx) {
       for (let yy = toY; yy > fromY; --yy) {
+        if (!this.isArenaTile(xx, yy)) continue;
         const radX = Math.abs(fromX + midX - xx);
         const radY = Math.abs(fromY + midY - yy + 1);
         if ((radX === exceptRadius && radY <= exceptRadius) || (radY === exceptRadius && radX <= exceptRadius)) {
           continue;
         }
         const delay = Math.max(radX, radY) / radius;
-        this.region.addEntity(
-          new SolGroundSlam(this.region, { x: xx, y: yy }, this, this.aggro, delay, this.tickNumber),
-        );
+        this.addGroundSlam(xx, yy, delay);
       }
     }
+  }
+
+  private addGroundSlam(x: number, y: number, delay: number) {
+    if (this.groundSlamTick !== this.tickNumber) {
+      this.groundSlamTick = this.tickNumber;
+      this.groundSlamTiles.clear();
+    }
+    const key = `${x}.${y}`;
+    if (this.groundSlamTiles.has(key)) return;
+    this.groundSlamTiles.add(key);
+    this.region.addEntity(new SolGroundSlam(this.region, { x, y }, this, this.aggro, delay));
+  }
+
+  private isArenaTile(x: number, y: number) {
+    // Hazards stop at the inside edge of the wallmen; never place them on the
+    // perimeter tiles themselves.
+    return x > ColosseumConstants.ARENA_WEST && x < ColosseumConstants.ARENA_EAST &&
+      y > ColosseumConstants.ARENA_NORTH && y < ColosseumConstants.ARENA_SOUTH;
   }
 
   // Bresenham's line algorirthm
@@ -468,9 +568,9 @@ export class SolHeredit extends Mob {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const delay = n / length;
-      this.region.addEntity(
-        new SolGroundSlam(this.region, { x: fromX, y: fromY }, this, this.aggro, delay, this.tickNumber),
-      );
+      if (this.isArenaTile(fromX, fromY)) {
+        this.addGroundSlam(fromX, fromY, delay);
+      }
       n++;
       if (fromX === toX && fromY === toY) break;
       const e2 = 2 * err;
@@ -610,6 +710,12 @@ export class SolHeredit extends Mob {
     this.firstSpear = true;
     // used above 50%
     this.playAnimation(SolAnimations.TripleAttackShort);
+    this.addSpotAnim({
+      id: COLOSSEUM_ASSETS.spotAnims.solTripleAttackShort.id,
+      channel: "sol-triple-attack",
+      animation: SolAnimations.TripleAttackShort,
+      height: 0,
+    });
     this._attackTriple(true);
     return this.phaseId >= 2 ? 11 : 12; // should be 11 between 50% and 75%
   }
@@ -619,6 +725,12 @@ export class SolHeredit extends Mob {
     this.firstSpear = true;
     // used below 50%
     this.playAnimation(SolAnimations.TripleAttackLong);
+    this.addSpotAnim({
+      id: COLOSSEUM_ASSETS.spotAnims.solTripleAttackLong.id,
+      channel: "sol-triple-attack",
+      animation: SolAnimations.TripleAttackLong,
+      height: 0,
+    });
     this._attackTriple(false);
     return 12;
   }
@@ -633,32 +745,41 @@ export class SolHeredit extends Mob {
     this.setOverheadText(overheadText);
 
     let didParry = false;
+    let didPerfectParry = false;
+    const perfectParryStartTick = this.region.world.globalTickCounter + 3;
 
     DelayedAction.registerDelayedAction(
       new DelayedAction(() => {
         this.playAnimation(SolAnimations.Grapple);
-        SoundCache.play(GRAPPLE_CHARGE);
       }, 1),
     );
     EquipmentControls?.instance.addEquipmentInteraction((clickedSlot) => {
       if (clickedSlot === slot) {
         didParry = true;
+        if (!didPerfectParry) {
+          this.grappleParryMessage = `You successfully defend your ${GRAPPLE_BODY_PARTS[slot]} from Sol Heredit's grapple!`;
+          this.grappleParryMessageTimer = 8;
+          if (this.region.world.globalTickCounter >= perfectParryStartTick) {
+            didPerfectParry = true;
+            this.grappleParryMessage = "You perfectly parry Sol Heredit's grapple!";
+          }
+        }
       }
     });
     DelayedAction.registerDelayedNpcAction(
       new DelayedAction(() => {
-        if (didParry) {
-          SoundCache.play(GRAPPLE_PARRY);
+        if (didPerfectParry) {
+          this.grantMaxDamageRollsOnNextIncomingAttack();
         }
         // queue damage to be played this tick (remember NPCs take turn before enemy)
-        this.aggro.addProjectile(
+        this.aggro?.addProjectile(
           new Projectile(
             new ParryUnblockableWeapon(),
             didParry ? 0 : 20 + Math.floor(Random.get() * 25),
             this,
             this.aggro,
             "stab",
-            { hidden: true, setDelay: 0 },
+            { visuals: { hidden: true }, setDelay: 0 },
           ),
         );
         EquipmentControls?.instance.resetEquipmentInteractions();
@@ -668,53 +789,57 @@ export class SolHeredit extends Mob {
   }
 
   private _attackTriple(short: boolean) {
-    SoundCache.play(TRIPLE_START);
-    SoundCache.play(TRIPLE_CHARGE_1);
-    DelayedAction.registerDelayedAction(new DelayedAction(this.doParryAttack(15, 3).bind(this), 2));
-    DelayedAction.registerDelayedAction(
+    const attackStartTick = this.region.world.globalTickCounter;
+    // Each delayed parry creates a one-tick melee projectile, so the prayer
+    // check belongs on the following tick when that hitsplat lands.
+    this.tripleParryAttackTicks = short ? [attackStartTick + 3, attackStartTick + 6, attackStartTick + 9] : [attackStartTick + 3, attackStartTick + 6, attackStartTick + 10];
+    this.punishEagerProtectionPrayer();
+    DelayedAction.registerDelayedAction(new DelayedAction(this.doParryAttack(15).bind(this), 2));
+    /*DelayedAction.registerDelayedAction(
       new DelayedAction(() => {
         SoundCache.play(TRIPLE_PARRY_1);
       }, 3),
-    );
-    DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_CHARGE_2), 4));
-    DelayedAction.registerDelayedAction(new DelayedAction(this.doParryAttack(short ? 25 : 30, 2).bind(this), 5));
-    DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_PARRY_2), 6));
+    );*/
+    DelayedAction.registerDelayedAction(new DelayedAction(this.doParryAttack(short ? 25 : 30).bind(this), 5));
+    // DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_PARRY_2), 6));
     if (short) {
-      DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_CHARGE_3_SHORT), 6));
-      DelayedAction.registerDelayedAction(new DelayedAction(this.doParryAttack(35, 2).bind(this), 8));
-      DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_PARRY_3), 9));
+      DelayedAction.registerDelayedAction(new DelayedAction(this.doParryAttack(35).bind(this), 8));
+      // DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_PARRY_3), 10));
     } else {
-      DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_CHARGE_3_LONG), 6));
-      DelayedAction.registerDelayedAction(new DelayedAction(this.doParryAttack(45, 3).bind(this), 9));
-      DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_PARRY_3), 10));
+      DelayedAction.registerDelayedAction(new DelayedAction(this.doParryAttack(45).bind(this), 9));
+      // DelayedAction.registerDelayedAction(new DelayedAction(() => SoundCache.play(TRIPLE_PARRY_3), 10));
+
     }
   }
 
-  private wasOverheadOn(ticks: number) {
-    for (let i = 0; i < ticks; ++i) {
-      if (this.overheadHistory.pop()) {
-        return true;
-      }
+  private punishEagerProtectionPrayer() {
+    const currentTick = this.region.world.globalTickCounter;
+    if (this.tripleParryAttackTicks.length > 0 && currentTick > this.tripleParryAttackTicks[this.tripleParryAttackTicks.length - 1]) {
+      this.tripleParryAttackTicks = [];
+      return;
     }
-    return false;
+    if (this.tripleParryAttackTicks.length === 0 || this.tripleParryAttackTicks.includes(currentTick)) {
+      return;
+    }
+    const activePrayer = this.aggro?.prayerController.activePrayers().find((prayer) => PROTECTION_PRAYERS.includes(prayer.name));
+    if (activePrayer) {
+      this.aggro.prayerController.disableProtectionPrayersForTicks(3);
+      this.eagerPrayerMessage = "Sol Heredit doesn't take kindly to your eager prayer.";
+      this.eagerPrayerMessageTimer = 8;
+    }
   }
 
-  private doParryAttack = (damage: number, ticks: number) => () => {
-    const overheadWasOn = this.wasOverheadOn(ticks);
+  private doParryAttack = (damage: number) => () => {
     this.aggro?.addProjectile(
       new Projectile(
-        overheadWasOn ? new ParryUnblockableWeapon() : new MeleeWeapon(),
+        new MeleeWeapon(),
         damage,
         this,
         this.aggro,
         "stab",
-        { hidden: true, setDelay: 1, checkPrayerAtHit: !overheadWasOn },
+        { visuals: { hidden: true }, setDelay: 1, checkPrayerAtHit: true },
       ),
     );
-    this.aggro?.prayerController.findPrayerByName("Protect from Melee").deactivate();
-    this.aggro?.prayerController.findPrayerByName("Protect from Range").deactivate();
-    this.aggro?.prayerController.findPrayerByName("Protect from Magic").deactivate();
-    this.overheadHistory.clear();
   };
 
   private phaseTransition(toPhase: number) {
@@ -728,10 +853,12 @@ export class SolHeredit extends Mob {
         this.tryPlacePools(x, y, numOtherPools);
       }, 1),
     );
-    this.aggro = null;
+    this.setAggro(null);
     DelayedAction.registerDelayedAction(
       new DelayedAction(() => {
-        this.aggro = lastAggro;
+        if (!lastAggro.hasDiedAndAwaitingRemoval) {
+          this.setAggro(lastAggro);
+        }
       }, 5),
     );
     if (toPhase >= 1 && toPhase <= 4) {
@@ -771,6 +898,13 @@ export class SolHeredit extends Mob {
     }
     this.poolCache[key] = true;
     this.region.addEntity(new SolSandPool(this.region, { x, y }));
+    this.region.addEntity(new GraphicsObject(
+      this.region,
+      { x, y },
+      COLOSSEUM_ASSETS.spotAnims.sandPool.id,
+      // tiny vertical offset to avoid z-fighting
+      { height: 0.005, delay: 0 },
+    ));
   }
 
   private getAttackDirection() {
@@ -815,9 +949,6 @@ export class SolHeredit extends Mob {
     } else {
       this.laserOrbCooldown = ENRAGE_LASER_ORB_COOLDOWN;
     }
-    if (ColosseumSettings.echoLasers || ColosseumSettings.echoEnrage) {
-      this.laserOrbCooldown = ENRAGE_LASER_ORB_COOLDOWN;
-    }
     DelayedAction.registerDelayedAction(
       new DelayedAction(() => {
         SoundCache.play(LASER_CHARGE);
@@ -828,18 +959,19 @@ export class SolHeredit extends Mob {
         SoundCache.play(LASER_FIRE);
       }, 7),
     );
-    // echo: pick two orbs to follow the player for 12 ticks
-    if (ColosseumSettings.echoLasers) {
-      const northSouthOrb = Random.get() < 0.5 ? Edge.NORTH : Edge.SOUTH;
-      const eastWestOrb = Random.get() < 0.5 ? Edge.NORTH : Edge.SOUTH;
-      this.laserOrbs
-      .filter((orb) => orb.edge === northSouthOrb || orb.edge === eastWestOrb)
-      .forEach((orb) => orb.echoFollowPlayer(ENRAGE_LASER_ORB_COOLDOWN))
-    }
   }
 
   create3dModel() {
-    return GLTFModel.forRenderable(this, SolHereditModel, { scale: 0.02 });
+    return CacheRenderModel.forRenderable(this, CacheRenderReferences.npc(12821), {
+      frameSoundDelayMs: SOL_FRAME_SOUNDS_DELAY_MS
+    });
+  }
+
+  override async preload() {
+    await Promise.all([
+      super.preload(),
+      ...SOL_SOUNDS.map((sound) => SoundCache.preload(sound.src)),
+    ]);
   }
 
   override get idlePoseId() {
@@ -865,6 +997,14 @@ export class SolHeredit extends Mob {
 
   get maxSpeed() {
     return 2;
+  }
+
+  override get canRun() {
+    return true;
+  }
+
+  override get healthBarWidth() {
+    return 96;
   }
 
   override movementStep() {
@@ -965,12 +1105,32 @@ export class SolHeredit extends Mob {
     return true;
   }
 
-  override drawUILayer(tickPercent, offset, context, scale, hitsplatsAbove) {
-    super.drawUILayer(tickPercent, offset, context, scale, hitsplatsAbove);
+  override drawOverheadText(context, scale, alignCenter = true, prefix = "") {
+    if (!alignCenter) {
+      super.drawOverheadText(context, scale, alignCenter, prefix);
+      return;
+    }
+    context.save();
+    // Place the text baseline just above the health bar drawn at y=0.
+    context.translate(0, (this.size / 2) * scale);
+    super.drawOverheadText(context, scale, alignCenter, prefix);
+    context.restore();
+  }
+
+  override drawUILayer(tickPercent, projector, context, scale) {
+    super.drawUILayer(tickPercent, projector, context, scale);
     // draw overhead text on the bottom left to simulate chatbox
     context.save();
     context.translate(10, context.canvas.height - 10);
     this.drawOverheadText(context, scale, false, `${this.mobName()}: `);
+    if (this.grappleParryMessage) {
+      context.translate(0, -30);
+      this.drawText(context, [{ text: this.grappleParryMessage, color: "006400" }], scale, false);
+    }
+    if (this.eagerPrayerMessage) {
+      context.translate(0, -60);
+      this.drawText(context, [{ text: this.eagerPrayerMessage, color: "ff0000" }], scale, false);
+    }
 
     context.restore();
   }

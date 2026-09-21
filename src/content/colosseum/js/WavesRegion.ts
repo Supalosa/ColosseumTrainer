@@ -481,11 +481,7 @@ export class WavesRegion extends ColosseumRegion {
     waveMobs.forEach((mob) => {
       mob.setLocation(translateLosCoordinate({ x: mob.location.x, y: mob.location.y }));
       mob.setAggro(player);
-      if (imported.fromWaveStart) this.addMob(mob);
-      else {
-        this.mobs.push(mob);
-        mob.addedToWorld();
-      }
+      this.addMob(mob);
     });
     this.wavePhase = "active";
     const spawnImportedReinforcements = imported.fromWaveStart && this.importedReinforcements !== "none";

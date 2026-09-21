@@ -19,6 +19,7 @@ describe("sol heredit attacks", () => {
     Viewport.setupViewport(region, document.createElement("canvas"), document.createElement("div"), true);
     player = new Player(region, { x: 27, y: 29 });
     boss = new SolHeredit(region, { x: 25, y: 24 }, { aggro: player });
+    boss.attackDelay = -1;
     region.addPlayer(player);
     Viewport.viewport.setPlayer(player);
     boss.setAggro(player);

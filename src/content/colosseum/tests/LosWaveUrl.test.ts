@@ -1,4 +1,4 @@
-import { decodeLosWaveUrl, translateLosCoordinate } from "../js/LosWaveUrl";
+import { decodeLosWaveUrl, decodePastedLosWaveUrl, translateLosCoordinate } from "../js/LosWaveUrl";
 
 describe("LOS wave URLs", () => {
   test("decodes mob tokens, packed player coordinates, and wave-start flag", () => {
@@ -18,5 +18,21 @@ describe("LOS wave URLs", () => {
 
   test("translates solver coordinates into trainer coordinates", () => {
     expect(translateLosCoordinate({ x: 6, y: 11 })).toEqual({ x: 16, y: 20 });
+  });
+
+  test("accepts pasted Colosim LOS URLs", () => {
+    expect(decodePastedLosWaveUrl("  https://los.colosim.com/?11114r#2822_ws  ")).toEqual({
+      mobs: [{ x: 11, y: 11, type: 4, extra: "r" }],
+      player: { x: 6, y: 11 },
+      fromWaveStart: true,
+    });
+  });
+
+  test.each([
+    "https://example.test/?11114r#2822_ws",
+    "https://los.colosim.com/not-a-wave",
+    "not a URL from los.colosim.com",
+  ])("rejects non-Colosim or invalid pasted URLs: %s", (value) => {
+    expect(decodePastedLosWaveUrl(value)).toBeNull();
   });
 });

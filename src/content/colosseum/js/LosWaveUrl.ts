@@ -26,6 +26,17 @@ export function decodeLosWaveUrl(url: URL): LosWaveImport | null {
   return { mobs, player, fromWaveStart: hashParts.includes("ws") };
 }
 
+/** Decode a pasted URL only when it came from the Colosim LOS solver. */
+export function decodePastedLosWaveUrl(text: string): LosWaveImport | null {
+  const value = text.trim();
+  if (!value.includes("los.colosim.com")) return null;
+  try {
+    return decodeLosWaveUrl(new URL(value));
+  } catch {
+    return null;
+  }
+}
+
 /** The trainer map is the solver map translated by (+10, +9). */
 export function translateLosCoordinate(coordinate: { x: number; y: number }) {
   return { x: coordinate.x + 10, y: coordinate.y + 9 };

@@ -1,7 +1,12 @@
 import "../../../../test/setupFiles";
 
-import { DelayedAction, EquipmentControls, Player, Settings, TestRegion, Viewport, World } from "osrs-sdk";
+import { DelayedAction, EquipmentControls, EquipmentTypes, Player, Random, Settings, TestRegion, Viewport, World } from "osrs-sdk";
 import { Attacks, SolHeredit } from "../js/mobs/SolHeredit";
+
+type SolGrappleTestAccess = {
+  attackGrapple(): number;
+  grappleParryMessage: string | null;
+};
 
 // sol heredit movement tests
 describe("sol heredit attacks", () => {
@@ -17,7 +22,8 @@ describe("sol heredit attacks", () => {
     world = new World();
     region.world = world;
     world.addRegion(region);
-    Viewport.setupViewport(region, true);
+    Viewport.setupViewport(region, document.createElement("canvas"), document.createElement("div"), true);
+    Viewport.viewport.tick = jest.fn();
     player = new Player(region, { x: 15, y: 15 });
     boss = new SolHeredit(region, { x: 13, y: 20 }, { aggro: player });
     boss.stunned = 0;
@@ -88,6 +94,26 @@ describe("sol heredit attacks", () => {
       expect(boss.hasLOS).toEqual(true);
       expect(boss.attackDelay).toBeLessThan(0);
     }
+  });
+
+  test("requires two auto attacks after a phase transition before a special", () => {
+    // The special is the final weighted-pool entry, so select it as soon as the cooldown permits.
+    const random = jest.spyOn(Random, "get").mockReturnValue(0.999);
+    boss.setAggro(player);
+    region.addMob(boss);
+    boss.phaseId = 3;
+    boss.forceAttack = Attacks.PHASE_TRANSITION;
+
+    world.tickWorld();
+    expect(boss.specialAttackCooldown).toEqual(2);
+    boss.forceAttack = null;
+    expect((boss as any).selectAttack()).toEqual(Attacks.SPEAR);
+    boss.specialAttackCooldown--;
+    expect((boss as any).selectAttack()).toEqual(Attacks.SPEAR);
+    boss.specialAttackCooldown--;
+    expect((boss as any).selectAttack()).toEqual(Attacks.TRIPLE_LONG);
+
+    random.mockRestore();
   });
 
   describe("triple attack tests", () => {
@@ -245,8 +271,24 @@ describe("sol heredit attacks", () => {
       expect(EquipmentControls.instance.equipmentInteractions).toHaveLength(1);
       world.tickWorld(3);
       expect(EquipmentControls.instance.equipmentInteractions).toHaveLength(2);
-      world.tickWorld(2);
+      world.tickWorld();
       expect(EquipmentControls.instance.equipmentInteractions).toHaveLength(1);
+    });
+
+    test("check a final-two-tick grapple parry grants max damage rolls for the next attack", () => {
+      // Start the grapple directly so this test isolates the parry reward from
+      // Sol's movement and special-attack selection prerequisites.
+      world.globalTickCounter = 1;
+      const grapple = boss as unknown as SolGrappleTestAccess;
+      grapple.attackGrapple();
+      DelayedAction.afterNpcTick();
+      DelayedAction.tick();
+      world.tickWorld(3);
+      Object.values(EquipmentTypes).forEach((slot) => EquipmentControls.instance.equipmentInteractions[0](slot));
+      expect(grapple.grappleParryMessage).toBe("You perfectly parry Sol Heredit's grapple!");
+      world.tickWorld();
+
+      expect(boss.forceMaxDamageRollsOnNextIncomingAttack).toBe(true);
     });
   });
 });

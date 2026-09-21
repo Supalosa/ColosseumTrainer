@@ -1,0 +1,33 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Beta deploys build the selected SDK and cache reader revisions, generate this
+# trainer's cache assets, and include them in the published application.
+[context.beta]
+  command = "bash scripts/build-beta.sh"
+  publish = "dist"
+
+[context.beta.environment]
+  OSRS_SDK_REPO = "https://github.com/OldSchoolSDK/osrs-sdk.git"
+  OSRS_SDK_BRANCH = "feat/cache-render-bundle"
+  OSRS_CACHE_READER_REPO = "https://github.com/Supalosa/osrscachereader.git"
+  OSRS_CACHE_READER_BRANCH = "beta"
+  # Cache ID is pinned by this trainer's osrs-assets.config.ts.
+  OSRS_ASSET_BASE_URL = "https://assets-soltrainer.netlify.app"
+  OSRS_CACHE_RENDER_MANIFEST_URL = "/osrs-assets/manifest.json"
+
+# Keep the production branch on the same unpublished SDK and cache-reader
+# revisions while beta is promoted. These can return to the default build once
+# the corresponding SDK packages are released to npm.
+[context.colosseum]
+  command = "bash scripts/build-beta.sh"
+  publish = "dist"
+
+[context.colosseum.environment]
+  OSRS_SDK_REPO = "https://github.com/OldSchoolSDK/osrs-sdk.git"
+  OSRS_SDK_BRANCH = "feat/cache-render-bundle"
+  OSRS_CACHE_READER_REPO = "https://github.com/Supalosa/osrscachereader.git"
+  OSRS_CACHE_READER_BRANCH = "beta"
+  OSRS_ASSET_BASE_URL = "https://assets-soltrainer.netlify.app"
+  OSRS_CACHE_RENDER_MANIFEST_URL = "/osrs-assets/manifest.json"

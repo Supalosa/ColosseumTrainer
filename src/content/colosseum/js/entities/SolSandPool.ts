@@ -5,7 +5,6 @@ import {
   Region,
   CollisionType,
   LineOfSightMask,
-  Viewport,
   ProjectileOptions,
   AttackBonuses,
   Projectile,
@@ -14,6 +13,7 @@ import {
   Random,
   Location,
   Trainer,
+  GraphicsObject,
 } from "osrs-sdk";
 
 import { SandPoolModel } from "../rendering/SandPoolModel";
@@ -49,7 +49,7 @@ export class SolSandPool extends Entity {
   }
 
   opacity(tickPercent) {
-    return this.age > 2 ? 1 : this.age + tickPercent / 2;
+    return this.age > 2 ? 1 : 0;
   }
 
   get color() {

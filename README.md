@@ -28,10 +28,31 @@ Sure. Right now the code is undergoing rapid development and the API is not stab
 
 ## Development notes
 
-Use Node 16 for now. There's an SSL error on version >= 18.
+Use Node 20. Asset requirements belong to this trainer in [src/assets.ts](src/assets.ts).
+[osrs-assets.config.ts](osrs-assets.config.ts) pins the OpenRS2 cache and output directory.
+See [assets.md](assets.md) for package installation and local development.
 
+Install dependencies and generate the static asset bundle before starting the trainer:
+
+    npm run assets
     npm run start
 
-Running test
+The generated directory is `public/osrs-assets`. Webpack copies it into
+`dist/osrs-assets`; the trainer loads its manifest from the same site by default.
+To host assets separately:
 
-    npx jest
+    OSRS_CACHE_RENDER_MANIFEST_URL=https://assets.example.com/manifest.json npm run start
+
+### Netlify beta builds
+
+The beta context runs [scripts/build-beta.sh](scripts/build-beta.sh). It builds
+the SDK and reader revisions selected in `netlify.toml`, compiles this trainer's
+asset manifest, and includes the generated directory in the deployed site.
+
+Downloads are reused under `NETLIFY_CACHE_DIR/osrs-cache-render/openrs2`
+(default `/opt/build/cache/osrs-cache-render/openrs2`). The trainer config pins
+the cache used for normal builds. An optional `OSRS_OPENRS2_CACHE_ID` overrides
+it for experiments; check map XTEA availability when selecting another cache.
+
+The SDK and reader selectors may be branch names or immutable tags. Use tags for
+reproducible deployments.

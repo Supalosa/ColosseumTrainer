@@ -1,17 +1,17 @@
 "use strict";
 
-import { Region, Viewport, Settings, Player, CardinalDirection, ImageLoader, Trainer } from "osrs-sdk";
+import { Region, Viewport, Settings, Player, Unit, CardinalDirection, ImageLoader, Trainer, CanvasSpriteModel, CollisionType, LineOfSightMask, Entity } from "osrs-sdk";
+import type { Loadout } from "osrs-sdk";
 
 
 import ColosseumMapImage from "../assets/images/map.png";
 
-import { ColosseumLoadout } from "./ColosseumLoadout";
+import { colosseumLoadout, configureColosseumPlayer } from "./ColosseumLoadout";
 import { ColosseumScene } from "./ColosseumScene";
 import { Attacks, SolHeredit as SolHeredit } from "./mobs/SolHeredit";
 
-import SidebarContent from "../sidebar.html";
 import { WallMan } from "./entities/WallMan";
-import { ColosseumSettings } from "./ColosseumSettings";
+import { colosseumSettings } from "./ColosseumSettings";
 import { SolarFlareOrb } from "./entities/SolarFlareOrb";
 import { SolarFlareTile } from "./entities/SolarFlareTile";
 
@@ -24,7 +24,38 @@ const SOLAR_FLARE_PATHS = [
   { location: { x: 28, y: 27 }, startAtIndex: 0 },
 ];
 
+// Temporary scene-extraction aid. It is deliberately URL-gated so normal
+// Colosseum sessions retain their collision blockers and UI.
+const sceneDebug = new URLSearchParams(window.location.search).get("scene-debug") === "1";
+
+/** A camera-facing, moving coordinate label used only by ?scene-debug=1. */
+class SceneCoordinateLabel extends Entity {
+  constructor(region: Region, private readonly player: Player, private readonly dx: number, private readonly dy: number) {
+    super(region, { x: 0, y: 0 });
+  }
+
+  get collisionType() { return CollisionType.NONE; }
+  get lineOfSight() { return LineOfSightMask.NONE; }
+  get color() { return "#00000000"; }
+  get drawOutline() { return false; }
+  getPerceivedLocation() { return { x: this.player.location.x + this.dx, y: this.player.location.y + this.dy, z: 1 }; }
+  getTrueLocation() { return this.getPerceivedLocation(); }
+  draw(_tickPercent: number, context: OffscreenCanvasRenderingContext2D, _offset = { x: 0, y: 0 }, scale = 1) {
+    const { x, y } = this.getPerceivedLocation();
+    context.fillStyle = "#ffff00";
+    context.font = `8px OSRS`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(`${x},${y}`, scale / 2, scale / 2 + 6);
+  }
+  create3dModel() { return CanvasSpriteModel.forRenderable(this); }
+}
+
 export class ColosseumRegion extends Region {
+  constructor(loadouts: Loadout[] = [colosseumLoadout]) {
+    super(loadouts);
+  }
+
   mapImage: HTMLImageElement = ImageLoader.createImage(ColosseumMapImage);
 
   get initialFacing() {
@@ -45,17 +76,6 @@ export class ColosseumRegion extends Region {
 
   rightClickActions(): any[] {
     return [];
-  }
-
-  initializeAndGetLoadoutType() {
-    const loadoutSelector = document.getElementById("loadouts") as HTMLInputElement;
-    loadoutSelector.value = Settings.loadout;
-    loadoutSelector.addEventListener("change", () => {
-      Settings.loadout = loadoutSelector.value;
-      Settings.persistToStorage();
-    });
-
-    return loadoutSelector.value;
   }
 
   drawWorldBackground(context: OffscreenCanvasRenderingContext2D, scale: number) {
@@ -91,108 +111,105 @@ export class ColosseumRegion extends Region {
 
     this.addPlayer(player);
 
-    const loadout = new ColosseumLoadout("max_melee");
-    loadout.setStats(player);
-    player.setUnitOptions(loadout.getLoadout());
+    if (sceneDebug) {
+      const coordinates = document.createElement("div");
+      coordinates.style.cssText = "position:fixed;top:8px;left:8px;z-index:10000;padding:6px 8px;background:#000c;color:#0f0;font:14px monospace;pointer-events:none";
+      document.body.appendChild(coordinates);
+      const updateCoordinates = () => {
+        coordinates.textContent = `scene debug — player: ${player.location.x}, ${player.location.y}`;
+        requestAnimationFrame(updateCoordinates);
+      };
+      updateCoordinates();
+
+      // 21 × 21 labels: every tile up to ten tiles from the player. The
+      // labels follow the player rather than being fixed to the spawn point.
+      for (let dx = -10; dx <= 10; dx++) for (let dy = -10; dy <= 10; dy++) {
+        this.addEntity(new SceneCoordinateLabel(this, player, dx, dy));
+      }
+    }
+
+    player.freeze(this.world.getReadyTimer);
+    // TODO: reset the camera too
 
     // NE 34,18
     // NW 19,18
     // SE 34,33
     // SW 19,33
+    const wallModelAt = (x: number, y: number) => {
+      // Corner pillars overlap the perimeter at x 19..20 / 33..34 and
+      // y 18..19 / 32..33. Keep every blocker in those footprints invisible:
+      // the cache scene already supplies the pillar geometry, including the
+      // outer corner tiles reached by both perimeter loops.
+      const inCornerPillar = (x <= 20 || x >= 33) && (y <= 19 || y >= 32);
+      return inCornerPillar ? null : (x + y) % 2 === 0 ? 50963 : 50964;
+    };
 
-    for (let xx = 19; xx <= 34; ++xx) {
-      this.addEntity(new WallMan(this, { x: xx, y: 18 }));
-      this.addEntity(new WallMan(this, { x: xx, y: 33 }));
+    if (!sceneDebug) {
+      for (let xx = 19; xx <= 34; ++xx) {
+        const wallModel = wallModelAt(xx, 18);
+        this.addEntity(new WallMan(this, { x: xx, y: 18 }, wallModel));
+        this.addEntity(new WallMan(this, { x: xx, y: 33 }, wallModelAt(xx, 33)));
+      }
+
+      for (let yy = 18; yy <= 33; ++yy) {
+        this.addEntity(new WallMan(this, { x: 19, y: yy }, wallModelAt(19, yy)));
+        this.addEntity(new WallMan(this, { x: 34, y: yy }, wallModelAt(34, yy)));
+      }
+      // Additional blockers sit just inside the corner pillars and remain
+      // invisible; only the open perimeter needs cache-rendered models.
+      this.addEntity(new WallMan(this, { x: 33, y: 19 }, null));
+      this.addEntity(new WallMan(this, { x: 20, y: 19 }, null));
+      this.addEntity(new WallMan(this, { x: 33, y: 32 }, null));
+      this.addEntity(new WallMan(this, { x: 20, y: 32 }, null));
     }
 
-    for (let yy = 18; yy <= 33; ++yy) {
-      this.addEntity(new WallMan(this, { x: 19, y: yy }));
-      this.addEntity(new WallMan(this, { x: 34, y: yy }));
-    }
-    this.addEntity(new WallMan(this, { x: 33, y: 19 }));
-    this.addEntity(new WallMan(this, { x: 20, y: 19 }));
-    this.addEntity(new WallMan(this, { x: 33, y: 32 }));
-    this.addEntity(new WallMan(this, { x: 20, y: 32 }));
-
-    this.addMob(new SolHeredit(this, { x: 25, y: 24 }, { aggro: player }));
+    const sol = new SolHeredit(this, { x: 25, y: 24 }, { aggro: player });
+    this.addMob(sol);
+    this.setBoss(sol);
 
     // Add 3d scene
     if (Settings.use3dView) {
-      this.addEntity(new ColosseumScene(this, { x: 0, y: 48 }));
+      this.addEntity(new ColosseumScene(this, { x: 0, y: 0 }));
     }
 
-    // setup UI and settings
-    ColosseumSettings.readFromStorage();
-
-    const setupAttackConfig = (elementId: string, field: keyof typeof ColosseumSettings) => {
-      const checkbox = document.getElementById(elementId) as HTMLInputElement;
-      checkbox.checked = ColosseumSettings[field] as boolean;
-      checkbox.addEventListener("change", () => {
-        (ColosseumSettings[field] as boolean) = checkbox.checked;
-        ColosseumSettings.persistToStorage();
-      });
-    };
-    setupAttackConfig("use_shield", "useShields");
-    setupAttackConfig("use_spears", "useSpears");
-    setupAttackConfig("use_triple", "useTriple");
-    setupAttackConfig("use_grapple", "useGrapple");
-    setupAttackConfig("use_phase_transitions", "usePhaseTransitions");
-    const solarFlareDropdown = document.getElementById("solar_flare_level") as HTMLSelectElement;
-    solarFlareDropdown.value = ColosseumSettings.solarFlareLevel.toString();
-    solarFlareDropdown.addEventListener("change", () => {
-      ColosseumSettings.solarFlareLevel = parseInt(solarFlareDropdown.value);
-      ColosseumSettings.persistToStorage();
-      this.updateSolarFlares();
-    });
-    const solarFlareTilesCheckbox = document.getElementById("show_solar_flare_tiles") as HTMLInputElement;
-    solarFlareTilesCheckbox.checked = ColosseumSettings.showSolarFlareTiles;
-    solarFlareTilesCheckbox.addEventListener("change", () => {
-      ColosseumSettings.showSolarFlareTiles = solarFlareTilesCheckbox.checked;
-      ColosseumSettings.persistToStorage();
-      this.updateSolarFlareTiles();
-    });
     this.updateSolarFlares();
     this.updateSolarFlareTiles();
-
-    setupAttackConfig("echo_max_hp", "echoMaxHp");
-    setupAttackConfig("echo_enrage", "echoEnrage");
-    setupAttackConfig("echo_lasers", "echoLasers");
-
-    const creditsButton = document.getElementById("credits_button") as HTMLButtonElement;
-    let showCredits = false;
-    creditsButton.addEventListener("click", () => {
-      showCredits = !showCredits;
-      document.getElementById("credits").innerHTML = !showCredits
-        ? ""
-        : `
-      <ul>
-        <li>Jagex</li>
-        <li>Supalosa (engine and logic)</li>
-        <li>Tesla Owner (engine)</li>
-        <li>KiwiIskadda (detailed feedback)</li>
-        <li>Syndra, Varadium, ro0bo, zyth (early feedback and testing)</li>
-        <li>@kattykoo on discord (dm for colosseum tips and tricks)</li>
-      </ul>`;
-    });
     return {
       player: player,
     };
   }
 
+  override reset(startWorld = true) {
+    const reset = super.reset(startWorld);
+    configureColosseumPlayer(reset.player);
+    return reset;
+  }
+
+  setSolarFlareLevel(level: number) {
+    colosseumSettings.set({ solarFlareLevel: level });
+    this.updateSolarFlares();
+  }
+
+  setShowSolarFlareTiles(show: boolean) {
+    colosseumSettings.set({ showSolarFlareTiles: show });
+    this.updateSolarFlareTiles();
+  }
+
   private updateSolarFlares() {
-    if (ColosseumSettings.solarFlareLevel === 0) {
+    const { solarFlareLevel } = colosseumSettings.getSnapshot();
+    if (solarFlareLevel === 0) {
       this.despawnSolarFlares();
       return;
     }
     if (this.entities.filter((entity) => entity instanceof SolarFlareOrb).length === 0) {
       SOLAR_FLARE_PATHS.forEach(({ location, startAtIndex }) => {
-        this.addEntity(new SolarFlareOrb(this, { ...location }, ColosseumSettings.solarFlareLevel, startAtIndex));
+        this.addEntity(new SolarFlareOrb(this, { ...location }, solarFlareLevel, startAtIndex));
       });
     } else {
       this.entities
         .filter((entity) => entity instanceof SolarFlareOrb)
         .forEach((entity) => {
-          (entity as SolarFlareOrb).setLevel(ColosseumSettings.solarFlareLevel);
+          (entity as SolarFlareOrb).setLevel(solarFlareLevel);
         });
     }
   }
@@ -207,7 +224,7 @@ export class ColosseumRegion extends Region {
   }
 
   private updateSolarFlareTiles() {
-    if (!ColosseumSettings.showSolarFlareTiles) {
+    if (!colosseumSettings.getSnapshot().showSolarFlareTiles) {
       this.despawnSolarFlareTiles();
       return;
     }
@@ -229,6 +246,16 @@ export class ColosseumRegion extends Region {
   }
 
   private enableReplay = false;
+  override onUnitDeath(unit: Unit) {
+    if (unit instanceof Player) {
+      this.mobs.forEach((mob) => {
+        if (mob instanceof SolHeredit) {
+          mob.tauntPlayerDeath();
+        }
+      });
+    }
+  }
+
   private replayTick = 1;
   override postTick() {
     if (!this.enableReplay || this.world.getReadyTimer > 0) {
@@ -312,7 +339,4 @@ export class ColosseumRegion extends Region {
     ++this.replayTick;
   }
 
-  getSidebarContent() {
-    return SidebarContent;
-  }
 }

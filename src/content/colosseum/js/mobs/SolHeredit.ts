@@ -450,6 +450,7 @@ export class SolHeredit extends Mob {
     }
     if (settings.useTriple) {
       attacks.add(Attacks.TRIPLE_SHORT);
+      attacks.add(Attacks.TRIPLE_LONG);
     }
     if (settings.useGrapple) {
       attacks.add(Attacks.GRAPPLE);

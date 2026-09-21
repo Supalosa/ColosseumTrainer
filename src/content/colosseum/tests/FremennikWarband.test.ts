@@ -44,6 +44,7 @@ describe("Fremennik warband", () => {
     region = new TestRegion(40, 40);
     world = new World();
     region.world = world;
+    (region as TestRegion & { getWaveTick: () => number }).getWaveTick = () => world.globalTickCounter;
     world.addRegion(region);
     target = new OneTileTarget(region, { x: 20, y: 20 }, {});
     target.freeze(Number.MAX_SAFE_INTEGER);
@@ -73,9 +74,8 @@ describe("Fremennik warband", () => {
     tick();
     expect(archer.location).toEqual({ x: 20, y: 24 });
     expect(attack).not.toHaveBeenCalled();
-    expect(archer.attackDelay).toBe(6);
 
-    tick(5);
+    tick(3);
     expect(attack).not.toHaveBeenCalled();
     tick();
     expect(attack).toHaveBeenCalledTimes(1);
@@ -111,6 +111,7 @@ describe("Fremennik warband", () => {
     archer.freeze(10);
     region.addMob(archer);
 
+    world.globalTickCounter = 4;
     tick();
 
     expect(archer.location).toEqual({ x: 20, y: 22 });

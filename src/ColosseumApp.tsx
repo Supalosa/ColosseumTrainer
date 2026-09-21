@@ -21,6 +21,7 @@ import {
   ColosseumSettingsState,
 } from "./content/colosseum/js/ColosseumSettings";
 import { decodePastedLosWaveUrl } from "./content/colosseum/js/LosWaveUrl";
+import { formatWaveTime } from "./content/colosseum/js/WaveTimer";
 
 declare const __OSRS_CACHE_RENDER_MANIFEST_URL__: string;
 
@@ -243,6 +244,30 @@ function WaveStartModal({ region }: { region: WavesRegion }) {
   );
 }
 
+function WaveTimer({ region }: { region: WavesRegion }) {
+  const ticks = useSyncExternalStore(
+    region.subscribeWaveState,
+    region.getWaveTick,
+    region.getWaveTick,
+  );
+
+  return (
+    <div style={{
+      bottom: 90,
+      color: "white",
+      fontFamily: "OSRS",
+      fontSize: 24,
+      left: 10,
+      pointerEvents: "none",
+      position: "absolute",
+      textShadow: "1px 1px 0 black",
+      zIndex: 1,
+    }}>
+      Wave timer: {formatWaveTime(ticks)}
+    </div>
+  );
+}
+
 function BossSidebar({ region }: { region: ColosseumRegion }) {
   const settings = useSettingsStore(colosseumSettings);
   return (
@@ -333,6 +358,7 @@ export function ColosseumApp() {
       <GameOverlay>
         <div id="disclaimer_panel">Work in progress.<br />All assets are property of Jagex.</div>
         <TrainerLoadingSplash state={loading} />
+        {trainer.region instanceof WavesRegion && isLoaded && <WaveTimer region={trainer.region} />}
         {trainer.region instanceof WavesRegion && isLoaded && <WaveStartModal region={trainer.region} />}
         <LoadoutManager
           loadouts={loadoutTemplates}

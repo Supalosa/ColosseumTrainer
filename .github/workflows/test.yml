@@ -1,0 +1,46 @@
+name: Test
+
+on:
+  push:
+    branches: [beta, colosseum]
+  pull_request:
+    branches: [beta, colosseum]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: OldSchoolSDK/osrs-sdk
+          ref: feat/cache-render-bundle
+          path: .beta-sdk
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - name: Build beta SDK packages
+        working-directory: .beta-sdk
+        run: |
+          npm ci
+          npm run build
+          npm pack --pack-destination "${RUNNER_TEMP}" --silent
+          npm pack --workspace osrs-sdk-assets --pack-destination "${RUNNER_TEMP}" --silent
+          npm pack --workspace osrs-sdk-react --pack-destination "${RUNNER_TEMP}" --silent
+      - name: Install beta SDK packages
+        run: |
+          SDK_VERSION="$(node -p "require('./.beta-sdk/package.json').version")"
+          REACT_VERSION="$(node -p "require('./.beta-sdk/packages/osrs-sdk-react/package.json').version")"
+          npm install --no-save "@types/node@16.4.0" \
+            "${RUNNER_TEMP}/osrs-sdk-${SDK_VERSION}.tgz" \
+            "${RUNNER_TEMP}/osrs-sdk-assets-${SDK_VERSION}.tgz" \
+            "${RUNNER_TEMP}/osrs-sdk-react-${REACT_VERSION}.tgz"
+      - run: npm test -- --runInBand

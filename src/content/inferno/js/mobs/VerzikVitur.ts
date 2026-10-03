@@ -1,6 +1,17 @@
 "use strict";
 
-import { Assets, Mob, MeleeWeapon, UnitBonuses, GLTFModel, RangedWeapon, Collision, SoundCache, Sound, DelayedAction} from "@supalosa/oldschool-trainer-sdk";
+import {
+  Assets,
+  Mob,
+  MeleeWeapon,
+  UnitBonuses,
+  GLTFModel,
+  RangedWeapon,
+  Collision,
+  SoundCache,
+  Sound,
+  DelayedAction,
+} from "@supalosa/oldschool-trainer-sdk";
 
 import MeleeCry from "../../assets/sounds/verzik_melee_cry_3957.ogg";
 import MeleeHit from "../../assets/sounds/verzik_melee_hit_3936.ogg";
@@ -12,17 +23,19 @@ enum VerzikAnimations {
   Idle,
   Move,
   Melee,
-  Range
+  Range,
 }
 
-class VerzikMelee extends RangedWeapon {
+export class VerzikMelee extends MeleeWeapon {
   constructor() {
-    super({});
+    super({ setDelay: 2 });
   }
 
-  override get isAreaAttack() {
-    // can be fired even under the boss
-    return true;
+  // typeless: protect from melee does not reduce the damage
+  override isBlockable(from, to, bonuses) {
+    // still populates effectivePrayers so defence prayers apply to the defence roll
+    this._calculatePrayerEffects(from, to, bonuses);
+    return false;
   }
 }
 
@@ -63,9 +76,7 @@ export class VerzikVitur extends Mob {
     this.stunned = 1;
 
     this.weapons = {
-      slash: new MeleeWeapon({
-        setDelay: 3,
-      }),
+      crush: new VerzikMelee(),
       range: new VerzikRanged(),
     };
 
@@ -131,7 +142,16 @@ export class VerzikVitur extends Mob {
       return false;
     }
     const targetLocation = this.aggro.location;
-    return Collision.collisionMath(this.location.x - 1, this.location.y + 1, this.size + 2, targetLocation.x, targetLocation.y, 1) && !Collision.collisionMath(this.location.x, this.location.y, this.size,  targetLocation.x, targetLocation.y, 1);
+    return (
+      Collision.collisionMath(
+        this.location.x - 1,
+        this.location.y + 1,
+        this.size + 2,
+        targetLocation.x,
+        targetLocation.y,
+        1,
+      ) && !Collision.collisionMath(this.location.x, this.location.y, this.size, targetLocation.x, targetLocation.y, 1)
+    );
   }
 
   // verzik attacks on a timer
@@ -152,18 +172,26 @@ export class VerzikVitur extends Mob {
   }
 
   attackMelee() {
+    if (this.aggro && this.aggro.dying < 0) {
+      this.attackStyle = "crush";
+      this.weapons.crush.attack(this, this.aggro, { attackStyle: "crush" });
+    }
     this.playAnimation(VerzikAnimations.Melee);
     SoundCache.play(new Sound(MeleeCry, 0.1));
-    DelayedAction.registerDelayedAction(new DelayedAction(() => {
-      SoundCache.play(new Sound(MeleeHit, 0.1));
-    }, 2));
+    DelayedAction.registerDelayedAction(
+      new DelayedAction(() => {
+        SoundCache.play(new Sound(MeleeHit, 0.1));
+      }, 2),
+    );
   }
 
   attackRanged() {
     this.playAnimation(VerzikAnimations.Range);
-    DelayedAction.registerDelayedAction(new DelayedAction(() => {
-      SoundCache.play(new Sound(RangeHit, 0.1));
-    }, 2));
+    DelayedAction.registerDelayedAction(
+      new DelayedAction(() => {
+        SoundCache.play(new Sound(RangeHit, 0.1));
+      }, 2),
+    );
   }
 
   get attackRange() {
@@ -204,7 +232,7 @@ export class VerzikVitur extends Mob {
 
   get attackAnimationId() {
     const style = this.attackStyleForNewAttack();
-    return style === "slash" ? 2 : 3;
+    return style === "crush" ? 2 : 3;
   }
 
   override get deathAnimationId() {

@@ -30,16 +30,17 @@ jest.mock("@supalosa/oldschool-trainer-sdk", () => {
     Assets: {
       getAssetUrl(x: any) {
         return x;
-      }
+      },
     },
     SoundCache: {
       preload() {},
-      play() {}
-    }
+      play() {},
+    },
   };
 });
 
 jest.mock("three", () => ({
+  ...jest.requireActual<typeof import("three")>("three"),
   Scene: class Scene {
     public add(): void {
       return;

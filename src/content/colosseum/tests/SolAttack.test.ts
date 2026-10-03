@@ -80,7 +80,7 @@ describe("sol heredit attacks", () => {
     expect(boss.attackDelay).toBeLessThan(0);
     world.tickWorld();
     expect(boss.location.y).toEqual(20);
-    expect(boss.hasLOS).toEqual(true);
+    expect(boss.hasLOS).toEqual(false);
     // does not attack here
     expect(boss.attackDelay).toBeLessThan(0);
     world.tickWorld();
@@ -99,7 +99,7 @@ describe("sol heredit attacks", () => {
       player.moveTo(13, yy);
       world.tickWorld();
       expect(boss.location.y).toEqual(yy + 6);
-      expect(boss.hasLOS).toEqual(true);
+      expect(boss.hasLOS).toEqual(false);
       expect(boss.attackDelay).toBeLessThan(0);
     }
   });

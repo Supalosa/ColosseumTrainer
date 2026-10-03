@@ -263,7 +263,7 @@ export class WavesRegion extends ColosseumRegion {
     // The modal owns the wave-start gate. Keep the world live so the player
     // can move during the five ticks between modal close and NPC placement.
     this.world.getReadyTimer = 0;
-    reset.player.frozen = 1;
+    reset.player.frozen = 2;
     Viewport.viewport.rotateEast();
     this.notifyWaveStateChanged();
     if (startWorld) this.world.startTicking();
@@ -340,7 +340,7 @@ export class WavesRegion extends ColosseumRegion {
       // Player movement is processed before postTick. Refreshing a one-tick
       // freeze here holds them until the server acknowledges Start, without
       // pausing the world or preventing camera input.
-      this.players[0].freeze(1);
+      this.players[0].freeze(2);
       return;
     }
 

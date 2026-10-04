@@ -27,6 +27,7 @@ describe("sol heredit attacks", () => {
     player = new Player(region, { x: 15, y: 15 });
     boss = new SolHeredit(region, { x: 13, y: 20 }, { aggro: player });
     boss.stunned = 0;
+    boss.attackDelay = -1;
     region.addPlayer(player);
     Viewport.viewport.setPlayer(player);
   };
@@ -37,6 +38,9 @@ describe("sol heredit attacks", () => {
 
   // checking the timing between the attack sequence starting and taking damage
   test("check timing of damage is correct", () => {
+    // TestRegion uses local coordinates rather than the Colosseum arena's
+    // world bounds; allow the attack to create its slam entities here.
+    jest.spyOn(boss as any, "isArenaTile").mockReturnValue(true);
     boss.setAggro(player);
     region.addMob(boss);
 
@@ -45,8 +49,12 @@ describe("sol heredit attacks", () => {
     expect(boss.firstSpear).toEqual(false);
     world.tickWorld(2);
     expect(player.currentStats.hitpoint).toEqual(99);
+    // Move onto one of the generated slam tiles so this test checks timing
+    // independently of the spear pattern's geometry.
+    expect(region.entities.length).toBeGreaterThan(0);
+    player.setLocation({ ...region.entities[0].location });
     world.tickWorld();
-    // player got hit
+    // player got hit once the delayed ground slam resolves
     expect(player.currentStats.hitpoint).toBeLessThan(99);
     const hp = player.currentStats.hitpoint;
     world.tickWorld(3);
@@ -72,7 +80,7 @@ describe("sol heredit attacks", () => {
     expect(boss.attackDelay).toBeLessThan(0);
     world.tickWorld();
     expect(boss.location.y).toEqual(20);
-    expect(boss.hasLOS).toEqual(true);
+    expect(boss.hasLOS).toEqual(false);
     // does not attack here
     expect(boss.attackDelay).toBeLessThan(0);
     world.tickWorld();
@@ -91,14 +99,14 @@ describe("sol heredit attacks", () => {
       player.moveTo(13, yy);
       world.tickWorld();
       expect(boss.location.y).toEqual(yy + 6);
-      expect(boss.hasLOS).toEqual(true);
+      expect(boss.hasLOS).toEqual(false);
       expect(boss.attackDelay).toBeLessThan(0);
     }
   });
 
   test("requires two auto attacks after a phase transition before a special", () => {
     // The special is the final weighted-pool entry, so select it as soon as the cooldown permits.
-    const random = jest.spyOn(Random, "get").mockReturnValue(0.999);
+    const random = jest.spyOn(Random, "get").mockReturnValue(0.85);
     boss.setAggro(player);
     region.addMob(boss);
     boss.phaseId = 3;
@@ -271,7 +279,7 @@ describe("sol heredit attacks", () => {
       expect(EquipmentControls.instance.equipmentInteractions).toHaveLength(1);
       world.tickWorld(3);
       expect(EquipmentControls.instance.equipmentInteractions).toHaveLength(2);
-      world.tickWorld();
+      world.tickWorld(2);
       expect(EquipmentControls.instance.equipmentInteractions).toHaveLength(1);
     });
 

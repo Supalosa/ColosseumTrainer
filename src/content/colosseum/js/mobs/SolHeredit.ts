@@ -225,7 +225,8 @@ export class SolHeredit extends Mob {
 
   setStats() {
     this.laserOrbs = [];
-    this.stunned = 4;
+    // Four-turn startup stun.
+    this.stunned = 5;
     this.attackDelay = 6;
     this.weapons = {
       stab: new MeleeWeapon(),
@@ -332,7 +333,18 @@ export class SolHeredit extends Mob {
     context.rotate(tickPercent * Math.PI * 2);
   }
 
-  attackIfPossible() {
+  override queueStep() {
+    super.queueStep();
+    if (this.age > 0 || this.dying === 0) return;
+    // Simulates what appears to be Sol queueing a check every tick.
+    this.checkQueuedAction();
+  }
+
+  override attackIfPossible() {
+    // Actions are selected in queueStep.
+  }
+
+  private checkQueuedAction() {
     if (this.grappleParryMessageTimer > 0 && --this.grappleParryMessageTimer === 0) {
       this.grappleParryMessage = null;
     }
@@ -350,6 +362,7 @@ export class SolHeredit extends Mob {
 
     if (
       colosseumSettings.getSnapshot().usePhaseTransitions &&
+      this.aggro && this.canAttack() &&
       this.attackDelay <= 0 &&
       this.phaseId < PHASE_TRANSITION_POINTS.length - 1
     ) {
@@ -382,14 +395,6 @@ export class SolHeredit extends Mob {
     const dx = this.aggro.location.x - tx,
       dy = this.aggro.location.y - ty;
     const isAdjacent = Math.abs(dx) <= 1 && Math.abs(dy) <= 1;
-    const targetIsUnderSol = Collision.collisionMath(
-      this.location.x,
-      this.location.y,
-      this.size,
-      this.aggro.location.x,
-      this.aggro.location.y,
-      this.aggro.size,
-    );
     this.hasLOS = isAdjacent;
 
     if (this.canAttack() === false) {
@@ -398,7 +403,7 @@ export class SolHeredit extends Mob {
 
     // can phase without being in range
     const inRange = this.hasLOS || this.forceAttack === Attacks.PHASE_TRANSITION;
-    if (inRange && this.attackDelay <= 0 && (this.stationaryTimer > 0 || targetIsUnderSol)) {
+    if (inRange && this.attackDelay <= 0) {
       const nextAttack = this.selectAttack();
       this.forceAttack = null;
       let nextDelay = 0;
@@ -450,6 +455,7 @@ export class SolHeredit extends Mob {
     }
     if (settings.useTriple) {
       attacks.add(Attacks.TRIPLE_SHORT);
+      attacks.add(Attacks.TRIPLE_LONG);
     }
     if (settings.useGrapple) {
       attacks.add(Attacks.GRAPPLE);
@@ -854,12 +860,13 @@ export class SolHeredit extends Mob {
       }, 1),
     );
     this.setAggro(null);
+    // Resume at the end of +4, so pursuit is allowed on phase tick +5.
     DelayedAction.registerDelayedAction(
       new DelayedAction(() => {
         if (!lastAggro.hasDiedAndAwaitingRemoval) {
           this.setAggro(lastAggro);
         }
-      }, 5),
+      }, 4),
     );
     if (toPhase >= 1 && toPhase <= 4) {
       this.createLaserOrb();

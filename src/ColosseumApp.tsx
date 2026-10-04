@@ -1,4 +1,4 @@
-import React, { useState, useSyncExternalStore } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import {
   CacheRender,
   cacheSound,
@@ -20,6 +20,8 @@ import {
   colosseumSettings,
   ColosseumSettingsState,
 } from "./content/colosseum/js/ColosseumSettings";
+import { decodePastedLosWaveUrl } from "./content/colosseum/js/LosWaveUrl";
+import { formatWaveTime } from "./content/colosseum/js/WaveTimer";
 
 declare const __OSRS_CACHE_RENDER_MANIFEST_URL__: string;
 
@@ -195,22 +197,20 @@ function WaveStartModal({ region }: { region: WavesRegion }) {
         {imported ?
           <>
             <p style={{ marginTop: 0, textAlign: "center", color: 'white' }}>Custom wave imported.</p>
-            {region.isLosWaveStartImport() && (
-              <label>
-                Reinforcements
-                <select
-                  aria-label="Reinforcements"
-                  value={importedReinforcements}
-                  onChange={(event) => region.setImportedReinforcements(event.currentTarget.value as ImportedReinforcements)}
-                >
-                  <option value="none">None</option>
-                  <option value="jaguar">Jaguar Warrior</option>
-                  <option value="shaman-jaguar">Serpent Shaman + Jaguar Warrior</option>
-                  <option value="minotaur">Minotaur</option>
-                  <option value="minotaur-shaman">Minotaur + Serpent Shaman</option>
-                </select>
-              </label>
-            )}
+            <label>
+              Reinforcements
+              <select
+                aria-label="Reinforcements"
+                value={importedReinforcements}
+                onChange={(event) => region.setImportedReinforcements(event.currentTarget.value as ImportedReinforcements)}
+              >
+                <option value="none">None</option>
+                <option value="jaguar">Jaguar Warrior</option>
+                <option value="shaman-jaguar">Serpent Shaman + Jaguar Warrior</option>
+                <option value="minotaur">Minotaur</option>
+                <option value="minotaur-shaman">Minotaur + Serpent Shaman</option>
+              </select>
+            </label>
           </> :
           <>
             <select
@@ -241,6 +241,30 @@ function WaveStartModal({ region }: { region: WavesRegion }) {
         </RuneScapeButton>
       </RuneScapePanel>
     </Modal>
+  );
+}
+
+function WaveTimer({ region }: { region: WavesRegion }) {
+  const ticks = useSyncExternalStore(
+    region.subscribeWaveState,
+    region.getWaveTick,
+    region.getWaveTick,
+  );
+
+  return (
+    <div style={{
+      bottom: 90,
+      color: "white",
+      fontFamily: "OSRS",
+      fontSize: 24,
+      left: 10,
+      pointerEvents: "none",
+      position: "absolute",
+      textShadow: "1px 1px 0 black",
+      zIndex: 1,
+    }}>
+      Wave timer: {formatWaveTime(ticks)}
+    </div>
   );
 }
 
@@ -313,6 +337,19 @@ export function ColosseumApp() {
 
   const isLoaded = loading?.status === "ready";
 
+  useEffect(() => {
+    if (!(trainer.region instanceof WavesRegion)) return;
+    const region = trainer.region;
+    const onPaste = (event: ClipboardEvent) => {
+      const imported = decodePastedLosWaveUrl(event.clipboardData?.getData("text/plain") ?? "");
+      if (!imported) return;
+      event.preventDefault();
+      region.importLosWave(imported);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [trainer]);
+
   return (
     <TrainerApp
       trainer={trainer}
@@ -321,6 +358,7 @@ export function ColosseumApp() {
       <GameOverlay>
         <div id="disclaimer_panel">Work in progress.<br />All assets are property of Jagex.</div>
         <TrainerLoadingSplash state={loading} />
+        {trainer.region instanceof WavesRegion && isLoaded && <WaveTimer region={trainer.region} />}
         {trainer.region instanceof WavesRegion && isLoaded && <WaveStartModal region={trainer.region} />}
         <LoadoutManager
           loadouts={loadoutTemplates}

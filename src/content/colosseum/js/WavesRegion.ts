@@ -177,7 +177,7 @@ export class WavesRegion extends ColosseumRegion {
   private spawnEligibilityPlayerLocation: { x: number; y: number } | null = null;
   private waveStateListeners = new Set<() => void>();
   private waveTick = 0;
-  private readonly losWaveImport: LosWaveImport | null;
+  private losWaveImport: LosWaveImport | null;
   private importedReinforcements: ImportedReinforcements = "none";
 
   constructor(loadouts: Loadout[] = [colosseumLoadout]) {
@@ -257,12 +257,13 @@ export class WavesRegion extends ColosseumRegion {
     this.fremennikWarbandPool = null;
     this.reinforcementTicks = 0;
     this.reinforcementsSpawned = false;
+    this.waveTick = 0;
     this.pendingMobs = [];
     const reset = super.reset(false);
     // The modal owns the wave-start gate. Keep the world live so the player
     // can move during the five ticks between modal close and NPC placement.
     this.world.getReadyTimer = 0;
-    reset.player.frozen = 1;
+    reset.player.frozen = 2;
     Viewport.viewport.rotateEast();
     this.notifyWaveStateChanged();
     if (startWorld) this.world.startTicking();
@@ -274,8 +275,6 @@ export class WavesRegion extends ColosseumRegion {
   }
 
   readonly isLosWaveImport = () => this.losWaveImport !== null;
-
-  readonly isLosWaveStartImport = () => this.losWaveImport?.fromWaveStart === true;
 
   readonly subscribeWaveState = (listener: () => void) => {
     this.waveStateListeners.add(listener);
@@ -290,8 +289,14 @@ export class WavesRegion extends ColosseumRegion {
 
   readonly getImportedReinforcements = () => this.importedReinforcements;
 
+  importLosWave(imported: LosWaveImport) {
+    this.losWaveImport = imported;
+    this.importedReinforcements = "none";
+    this.reset();
+  }
+
   setImportedReinforcements(reinforcements: ImportedReinforcements) {
-    if (this.wavePhase !== "waiting" || !this.losWaveImport?.fromWaveStart) return;
+    if (this.wavePhase !== "waiting" || !this.losWaveImport) return;
     this.importedReinforcements = reinforcements;
     this.notifyWaveStateChanged();
   }
@@ -335,7 +340,7 @@ export class WavesRegion extends ColosseumRegion {
       // Player movement is processed before postTick. Refreshing a one-tick
       // freeze here holds them until the server acknowledges Start, without
       // pausing the world or preventing camera input.
-      this.players[0].freeze(1);
+      this.players[0].freeze(2);
       return;
     }
 
@@ -344,6 +349,7 @@ export class WavesRegion extends ColosseumRegion {
         this.spawnReinforcements();
       }
       this.waveTick++;
+      this.notifyWaveStateChanged();
       return;
     }
 
@@ -481,14 +487,10 @@ export class WavesRegion extends ColosseumRegion {
     waveMobs.forEach((mob) => {
       mob.setLocation(translateLosCoordinate({ x: mob.location.x, y: mob.location.y }));
       mob.setAggro(player);
-      if (imported.fromWaveStart) this.addMob(mob);
-      else {
-        this.mobs.push(mob);
-        mob.addedToWorld();
-      }
+      this.addMob(mob);
     });
     this.wavePhase = "active";
-    const spawnImportedReinforcements = imported.fromWaveStart && this.importedReinforcements !== "none";
+    const spawnImportedReinforcements = this.importedReinforcements !== "none";
     this.reinforcementsSpawned = !spawnImportedReinforcements;
     this.reinforcementTicks = spawnImportedReinforcements ? REINFORCEMENT_DELAY_TICKS : 0;
     if (imported.fromWaveStart) this.spawnFremennikWarband(player, true);

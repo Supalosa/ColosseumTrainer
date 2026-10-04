@@ -19,11 +19,13 @@ describe("sol heredit attacks", () => {
     Viewport.setupViewport(region, document.createElement("canvas"), document.createElement("div"), true);
     player = new Player(region, { x: 27, y: 29 });
     boss = new SolHeredit(region, { x: 25, y: 24 }, { aggro: player });
+    boss.attackDelay = -1;
     region.addPlayer(player);
     Viewport.viewport.setPlayer(player);
     boss.setAggro(player);
     region.addMob(boss);
-    boss.stunned = 4;
+    // Four blocked turns.
+    boss.stunned = 5;
     fourTickWeapon.inventoryLeftClick(player);
     player.setLocation({ x: 27, y: 29 });
   });
@@ -116,8 +118,12 @@ describe("sol heredit attacks", () => {
   test("tick 13", () => {
     // phased the boss here - "Not bad. Let's try something else..."
     boss.currentStats.hitpoint = 1337;
-    // TODO implement phase transition
-    boss.stunned = 6;
+    // This video fixture supplies its phase pause manually. The queued phase
+    // transition itself is exercised in SolQueue.test.ts.
+    boss.phaseId = 1;
+    boss.stunned = 7;
+    // Seven-tick phase cooldown.
+    boss.attackDelay = 8;
     world.tickWorld();
     expect(boss.location).toEqual({ x: 25, y: 24 });
     expect(player.location).toEqual({ x: 24, y: 21 });
@@ -155,7 +161,7 @@ describe("sol heredit attacks", () => {
     world.tickWorld();
     expect(player.location).toEqual({ x: 24, y: 25 });
     expect(boss.location).toEqual({ x: 25, y: 24 });
-    expect(boss.attackDelay).toBeLessThan(0); // boss is not attacking
+    expect(boss.attackDelay).toEqual(2); // phase cooldown still prevents an auto
     player.moveTo(24, 26);
   });
 
@@ -163,7 +169,7 @@ describe("sol heredit attacks", () => {
     world.tickWorld();
     expect(player.location).toEqual({ x: 24, y: 26 });
     expect(boss.location).toEqual({ x: 24, y: 24 });
-    expect(boss.attackDelay).toBeLessThan(0);
+    expect(boss.attackDelay).toEqual(1);
     player.moveTo(24, 27);
   });
 
@@ -171,7 +177,7 @@ describe("sol heredit attacks", () => {
     world.tickWorld();
     expect(player.location).toEqual({ x: 24, y: 27 });
     expect(boss.location).toEqual({ x: 24, y: 25 });
-    expect(boss.attackDelay).toBeLessThan(0);
+    expect(boss.attackDelay).toEqual(0);
     player.moveTo(24, 28);
   });
 

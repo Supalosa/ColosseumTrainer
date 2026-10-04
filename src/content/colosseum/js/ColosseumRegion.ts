@@ -128,7 +128,7 @@ export class ColosseumRegion extends Region {
       }
     }
 
-    player.freeze(this.world.getReadyTimer);
+    player.freeze(this.world.getReadyTimer + 1);
     // TODO: reset the camera too
 
     // NE 34,18
@@ -266,7 +266,7 @@ export class ColosseumRegion extends Region {
     const boss = this.mobs[0] as SolHeredit;
     switch (this.replayTick) {
       case 1:
-        boss.stunned = 4;
+        boss.stunned = 5;
         player.inventory.find((i) => i.itemName === "Shark")?.inventoryLeftClick(player);
         player.setAggro(boss);
         break;

@@ -96,11 +96,11 @@ function createTrainer() {
   colosseumSettings.load();
 
   const regions: Record<string, Region> = {
-    "colosseum.html": new ColosseumRegion(loadoutTemplates),
-    "waves.html": new WavesRegion(loadoutTemplates),
+    colosseum: new ColosseumRegion(loadoutTemplates),
+    waves: new WavesRegion(loadoutTemplates),
   };
-  const regionName = window.location.pathname.split("/").pop() ?? "colosseum.html";
-  const region = regions[regionName] ?? regions["colosseum.html"];
+  const regionName = window.location.pathname.split("/").filter(Boolean).pop()?.replace(/\.html$/, "");
+  const region = regionName === "waves" ? regions.waves : regions.colosseum;
   return new TrainerInstance(region, { readyTimer: 5 });
 }
 
